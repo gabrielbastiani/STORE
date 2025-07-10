@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@react-icons/all-files": "^4.1.0",
     "@types/axios": "^0.9.36",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/react-cookies": "^0.1.4",
@@ -17,17 +18,22 @@
     "cookies-next": "^6.0.0",
     "jsonwebtoken": "^9.0.2",
     "next": "15.3.5",
+    "nextjs-toploader": "^3.8.16",
     "react": "^19.0.0",
     "react-cookie": "^8.0.1",
     "react-dom": "^19.0.0",
-    "react-toastify": "^11.0.5"
+    "react-icons": "^5.5.0",
+    "react-toastify": "^11.0.5",
+    "ts-to-zod": "^3.15.0",
+    "zod": "^4.0.3"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
-    "@tailwindcss/postcss": "^4",
+    "@tailwindcss/postcss": "^4.1.11",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "autoprefixer": "^10.4.21",
     "eslint": "^9",
     "eslint-config-next": "15.3.5",
     "eslint-config-prettier": "^10.1.5",
