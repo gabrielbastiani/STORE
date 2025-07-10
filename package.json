@@ -9,9 +9,18 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@types/axios": "^0.9.36",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/react-cookies": "^0.1.4",
+    "@types/react-toastify": "^4.0.2",
+    "axios": "^1.10.0",
+    "cookies-next": "^6.0.0",
+    "jsonwebtoken": "^9.0.2",
     "next": "15.3.5",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-cookie": "^8.0.1",
+    "react-dom": "^19.0.0",
+    "react-toastify": "^11.0.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
