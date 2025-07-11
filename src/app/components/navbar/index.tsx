@@ -17,7 +17,7 @@ type Store = {
     id: string
     name: string;
     slug: string;
-    image: any;
+    images: any;
 };
 
 export function Navbar() {
@@ -103,7 +103,7 @@ export function Navbar() {
                                     {searchResults.map((product) => (
                                         <li key={product.id} className="flex items-center gap-2 p-2 border-b hover:bg-gray-100">
                                             <Image
-                                                src={product.image ? `${API_URL}/files/${product.image}` : noImage}
+                                                src={product.images[0].url ? `${API_URL}/files/${product.images[0].url}` : noImage}
                                                 alt={product.name}
                                                 width={50}
                                                 height={50}
