@@ -5,7 +5,7 @@ import { AuthContextStore } from "@/app/contexts/AuthContextStore";
 import { setupAPIClient } from "@/services/api";
 import Link from "next/link";
 import Image from "next/image";
-import noImage from '../../../../assets/no-image-icon-6.png';
+import noImage from '../../../../public/no-image.png';
 import { useTheme } from "@/app/contexts/ThemeContext"; 
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;

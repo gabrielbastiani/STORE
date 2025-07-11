@@ -1,4 +1,5 @@
-@import "tailwindcss/preflight";
+@tailwind base;
+@tailwind components;
 @tailwind utilities;
 
 :root {
@@ -37,7 +38,8 @@ body {
 
 .swiper-button-next::after,
 .swiper-button-prev::after {
-  @apply text-orange-500 font-extrabold;
+  @apply text-orange-500;
+  @apply font-extrabold;
 }
 
 .swiper-button-next:hover::after,

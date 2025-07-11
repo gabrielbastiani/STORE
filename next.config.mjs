@@ -1,20 +1,20 @@
-import type { NextConfig } from "next";
+// @ts-check
 
-const nextConfig: NextConfig = {
+/**
+ * @type {import('next').NextConfig}
+ */
+const nextConfig = {
   reactStrictMode: true,
   productionBrowserSourceMaps: false,
+  
   images: {
     remotePatterns: [
       {
         protocol: 'http',
         hostname: 'localhost',
-      },
-      {
-        protocol: 'https',
-        hostname: 'img.youtube.com',
       }
     ]
   }
-};
+}
 
 export default nextConfig;

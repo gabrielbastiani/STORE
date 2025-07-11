@@ -1,15 +1,7 @@
+import { Providers } from "./providers";
 import type { Metadata } from "next";
 import localFont from "next/font/local";
-import NextTopLoader from "nextjs-toploader";
-import { CookiesProvider } from "react-cookie";
 import "./globals.css";
-import { ThemeProvider } from "./contexts/ThemeContext";
-import { AuthProviderStore } from "./contexts/AuthContextStore";
-import { ToastContainer } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
-import { PrivacyProvider } from "./contexts/PrivacyContext";
-import PrivacyBanner from "./components/policePrivacy/privacyBanner";
-import PrivacySettingsModal from "./components/policePrivacy/privacySettingsModal";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 const STORE_URL = process.env.NEXT_PUBLIC_URL_STORE || 'http://localhost:3001';
@@ -65,19 +57,9 @@ export default function RootLayout({
   return (
     <html lang="pt-br">
       <body id="root" className={`${geistSans.variable} antialiased`}>
-        <ThemeProvider>
-          <NextTopLoader color="#ff4444" showSpinner={false} />
-          <PrivacyProvider>
-            <CookiesProvider>
-              <AuthProviderStore>
-                <ToastContainer autoClose={5000} />
-                {children}
-              </AuthProviderStore>
-            </CookiesProvider>
-            <PrivacyBanner />
-            <PrivacySettingsModal />
-          </PrivacyProvider>
-        </ThemeProvider>
+        <Providers>
+          {children}
+        </Providers>
       </body>
     </html>
   );
