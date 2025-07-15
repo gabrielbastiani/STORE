@@ -8,19 +8,22 @@ import { ToastContainer } from 'react-toastify'
 import { PrivacyProvider } from "./contexts/PrivacyContext";
 import PrivacyBanner from "./components/policePrivacy/privacyBanner";
 import PrivacySettingsModal from "./components/policePrivacy/privacySettingsModal";
+import { CartProvider } from "./contexts/CartContext";
 
 export function Providers({ children }: { children: React.ReactNode }) {
     return (
         <ThemeProvider>
-            <NextTopLoader color="#ff4444" showSpinner={false} />
-            <PrivacyProvider>
-                <AuthProviderStore>
-                    <ToastContainer autoClose={5000} />
-                    {children}
-                </AuthProviderStore>
-                <PrivacyBanner />
-                <PrivacySettingsModal />
-            </PrivacyProvider>
+            <CartProvider>
+                <NextTopLoader color="#ff4444" showSpinner={false} />
+                <PrivacyProvider>
+                    <AuthProviderStore>
+                        <ToastContainer autoClose={5000} />
+                        {children}
+                    </AuthProviderStore>
+                    <PrivacyBanner />
+                    <PrivacySettingsModal />
+                </PrivacyProvider>
+            </CartProvider>
         </ThemeProvider>
     )
 }
