@@ -3,8 +3,10 @@
 import { setupAPIClient } from "@/services/api";
 import { AuthContextStore } from "@/app/contexts/AuthContextStore";
 import { useCart } from "@/app/contexts/CartContext";
+import { useTheme } from "@/app/contexts/ThemeContext";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import {
     FiLogIn,
     FiUser,
@@ -14,13 +16,20 @@ import {
     FiSearch,
     FiChevronDown,
 } from "react-icons/fi";
-import { ChangeEvent, useContext, useEffect, useRef, useState } from "react";
+import {
+    ChangeEvent,
+    KeyboardEvent,
+    useContext,
+    useEffect,
+    useRef,
+    useState,
+} from "react";
+import debounce from "lodash.debounce";
 import { toast } from "react-toastify";
 import noImage from "../../../../public/no-image.png";
-import { useTheme } from "@/app/contexts/ThemeContext";
-import { useRouter } from "next/navigation";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const API_URL = process.env.NEXT_PUBLIC_API_URL!;
+const HISTORY_KEY = "@store:searchHistory";
 
 type MenuItemDTO = {
     id: string;
@@ -38,8 +47,8 @@ type MenuItemDTO = {
 type Store = {
     id: string;
     name: string;
-    slug: string;
-    price_per?: number;
+    slug: string | null;
+    price_per: number;
     images: { url: string }[];
 };
 
@@ -47,75 +56,114 @@ export function Navbar() {
 
     const router = useRouter();
     const { colors } = useTheme();
-    const { isAuthenticated, loadingAuth, user, configs } = useContext(
-        AuthContextStore
-    );
+    const { isAuthenticated, loadingAuth, user, configs } = useContext(AuthContextStore);
     const { cartCount } = useCart();
 
     const [menuItems, setMenuItems] = useState<MenuItemDTO[]>([]);
     const [searchTerm, setSearchTerm] = useState("");
     const [isSearching, setIsSearching] = useState(false);
     const [searchResults, setSearchResults] = useState<Store[]>([]);
+    const [history, setHistory] = useState<string[]>([]);
+    const [showHistory, setShowHistory] = useState(false);
+    const [selectedIndex, setSelectedIndex] = useState(-1);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
     const searchRef = useRef<HTMLDivElement>(null);
 
-    // Fecha busca ao clicar fora
+    // fecha dropdown ao clicar fora
     useEffect(() => {
         function handleClickOutside(e: MouseEvent) {
-            if (
-                searchRef.current &&
-                !searchRef.current.contains(e.target as Node)
-            ) {
-                setSearchTerm("");
+            if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+                setShowHistory(false);
                 setSearchResults([]);
-                setMobileSearchOpen(false);
+                setSelectedIndex(-1);
             }
         }
         document.addEventListener("mousedown", handleClickOutside);
-        return () =>
-            document.removeEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    // Carrega menu em árvore
+    // carrega menu + histórico
     useEffect(() => {
-        async function loadMenu() {
+        setupAPIClient()
+            .get<MenuItemDTO[]>("/menu/get/store?position=topo_header_menu")
+            .then((res) => setMenuItems(res.data))
+            .catch(console.error);
+
+        const saved = localStorage.getItem(HISTORY_KEY);
+        if (saved) setHistory(JSON.parse(saved));
+    }, []);
+
+    // busca com debounce, consumindo seu endpoint genérico
+    const doSearch = useRef(
+        debounce(async (term: string) => {
+            setIsSearching(true);
             try {
                 const api = setupAPIClient();
-                const { data } = await api.get<MenuItemDTO[]>("/menu/top");
-                setMenuItems(data);
+                const res = await api.get<{
+                    data: Store[];
+                    meta: { total: number; page: number; perPage: number; totalPages: number };
+                }>("/products/search", {
+                    params: { q: term, page: 1, perPage: 5 },
+                });
+                setSearchResults(res.data.data || []);
             } catch (err) {
-                console.error("Erro ao carregar menu", err);
+                console.error(err);
+                toast.error("Erro ao buscar produtos.");
+            } finally {
+                setIsSearching(false);
             }
-        }
-        loadMenu();
-    }, []);
+        }, 300)
+    ).current;
 
-    // Busca produtos
-    const handleSearch = async (e: ChangeEvent<HTMLInputElement>) => {
+    const handleSearch = (e: ChangeEvent<HTMLInputElement>) => {
         const term = e.target.value;
         setSearchTerm(term);
+        setSelectedIndex(-1);
         if (term.length < 2) {
             setSearchResults([]);
             return;
         }
-        setIsSearching(true);
-        try {
-            const api = setupAPIClient();
-            const { data } = await api.get<Store[]>(
-                "/product/store/search_nav_bar",
-                { params: { search: term } }
-            );
-            setSearchResults(data || []);
-        } catch {
-            toast.error("Erro ao buscar produtos.");
-        } finally {
-            setIsSearching(false);
+        doSearch(term);
+    };
+
+    const handleFocus = () => {
+        if (history.length > 0) setShowHistory(true);
+    };
+
+    // navegação por ↑/↓ no dropdown
+    const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+        const list = searchResults.length
+            ? searchResults
+            : history.map((h) => ({ id: h, slug: "", name: h, images: [], price_per: 0 }));
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setSelectedIndex((i) => Math.min(i + 1, list.length - 1));
+        }
+        if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setSelectedIndex((i) => Math.max(i - 1, 0));
         }
     };
 
-    // Build URL de menu
+    // redireciona e salva no histórico
+    const submitSearch = (term: string) => {
+        setHistory((h) => {
+            const updated = [term, ...h.filter((x) => x !== term)].slice(0, 10);
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+            return updated;
+        });
+        router.push(`/search?query=${encodeURIComponent(term)}`);
+        setShowHistory(false);
+        setSearchTerm("");
+    };
+
+    const clearHistory = () => {
+        localStorage.removeItem(HISTORY_KEY);
+        setHistory([]);
+    };
+
     const buildUrl = (item: MenuItemDTO) => {
         if (item.type === "CATEGORY") return `/category/${item.category_id}`;
         if (item.type === "CUSTOM_PAGE") return `/pages/${item.customPageSlug}`;
@@ -123,7 +171,7 @@ export function Navbar() {
         return item.url!;
     };
 
-    // Desktop recursive nav item
+    // Componente recursivo desktop
     const DesktopNavItem = ({
         item,
         depth = 0,
@@ -133,8 +181,6 @@ export function Navbar() {
     }) => {
         const [open, setOpen] = useState(false);
         const leftPos = depth === 0 ? 0 : "100%";
-        const shouldRenderDropdown = open && (item.children.length > 0 || item.icon);
-
         return (
             <li
                 className="relative"
@@ -147,32 +193,20 @@ export function Navbar() {
                 >
                     {item.label}
                 </Link>
-
-                {shouldRenderDropdown && (
+                {open && (item.children.length > 0 || item.icon) && (
                     <div
                         className="absolute flex bg-black shadow-lg rounded z-50 overflow-visible"
-                        style={{
-                            top: depth === 0 ? "100%" : 0,
-                            left: leftPos,
-                            minWidth: 240,
-                        }}
+                        style={{ top: depth === 0 ? "100%" : 0, left: leftPos, minWidth: 240 }}
                     >
-                        {/* Se tiver filhos, renderiza a lista */}
                         {item.children.length > 0 && (
                             <ul className="flex-1 divide-y">
-                                {item.children.map((child) => (
-                                    <DesktopNavItem
-                                        key={child.id}
-                                        item={child}
-                                        depth={depth + 1}
-                                    />
+                                {item.children.map((ch) => (
+                                    <DesktopNavItem key={ch.id} item={ch} depth={depth + 1} />
                                 ))}
                             </ul>
                         )}
-
-                        {/* Se tiver ícone, renderiza o banner */}
                         {item.icon && (
-                            <div className={`w-48 h-auto ${item.children.length > 0 ? "" : "p-4"}`}>
+                            <div className={`w-48 h-auto ${item.children.length ? "" : "p-4"}`}>
                                 <Image
                                     src={`${API_URL}/files/${item.icon}`}
                                     alt={`${item.label} banner`}
@@ -188,14 +222,14 @@ export function Navbar() {
         );
     };
 
-    // Mobile recursive nav
-    function MobileNavItem({
+    // Componente recursivo mobile
+    const MobileNavItem = ({
         item,
         level,
     }: {
         item: MenuItemDTO;
         level: number;
-    }) {
+    }) => {
         const [open, setOpen] = useState(false);
         return (
             <div style={{ paddingLeft: level * 16 }} className="mb-2">
@@ -209,9 +243,7 @@ export function Navbar() {
                 >
                     <span className="font-medium">{item.label}</span>
                     {item.children.length > 0 && (
-                        <FiChevronDown
-                            className={`transition-transform ${open ? "rotate-180" : ""}`}
-                        />
+                        <FiChevronDown className={open ? "rotate-180" : ""} />
                     )}
                 </div>
                 {open && (
@@ -234,15 +266,16 @@ export function Navbar() {
                 )}
             </div>
         );
-    }
+    };
 
     return (
         <header className="relative w-full top-0 z-50">
-            {/* LINHA 1 */}
+            {/* Linha superior */}
             <div
                 className="flex items-center justify-between py-6 px-4 md:px-8"
                 style={{ background: colors?.fundo_do_menu || "#000" }}
             >
+                {/* Mobile toggle + logo */}
                 <div className="flex items-center">
                     <button
                         className="md:hidden text-white mr-4"
@@ -252,75 +285,137 @@ export function Navbar() {
                     </button>
                     <Link href="/">
                         <Image
-                            src={
-                                configs?.logo
-                                    ? `${process.env.NEXT_PUBLIC_API_URL}/files/${configs.logo}`
-                                    : noImage
-                            }
-                            width={100}
-                            height={40}
+                            src={configs?.logo ? `${API_URL}/files/${configs.logo}` : noImage}
+                            width={120}
+                            height={60}
                             alt="Logo"
                             className="object-contain"
                         />
                     </Link>
                 </div>
 
-                {/* Busca desktop */}
-                <div className="hidden md:block flex-1 max-w-lg mx-8 relative" ref={searchRef}>
-                    <input
-                        type="text"
-                        value={searchTerm}
-                        onChange={handleSearch}
-                        placeholder="Buscar produtos..."
-                        className="w-full px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-black"
-                    />
-                    {isSearching && (
-                        <div className="absolute right-3 top-3 text-sm text-gray-500">
-                            Buscando...
-                        </div>
-                    )}
-                    {searchResults.length > 0 && (
-                        <div className="absolute top-full left-0 w-full bg-white rounded-lg shadow-lg mt-1 z-50 overflow-hidden">
-                            {searchResults.map((prod) => (
-                                <Link
-                                    key={prod.id}
-                                    href={`/product/${prod.slug}`}
-                                    className="flex items-center gap-3 px-3 py-2 hover:bg-gray-100"
-                                >
-                                    <Image
-                                        src={
-                                            prod.images[0]?.url
-                                                ? `${process.env.NEXT_PUBLIC_API_URL}/files/${prod.images[0].url}`
-                                                : noImage
-                                        }
-                                        alt={prod.name}
-                                        width={40}
-                                        height={40}
-                                        className="rounded"
-                                    />
-                                    <div className="flex-1">
-                                        <p className="text-gray-800">{prod.name}</p>
-                                        {prod.price_per != null && (
-                                            <p className="text-sm font-semibold text-orange-600">
-                                                R$ {prod.price_per.toFixed(2)}
-                                            </p>
-                                        )}
+                {/* Busca desktop dentro de um form para capturar Enter */}
+                <div ref={searchRef} className="hidden md:flex flex-1 max-w-lg mx-8 relative">
+                    <form
+                        className="flex flex-1 items-center"
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            submitSearch(searchTerm);
+                        }}
+                    >
+                        <input
+                            type="text"
+                            className="flex-1 px-4 py-2 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-black"
+                            value={searchTerm}
+                            onChange={handleSearch}
+                            onFocus={handleFocus}
+                            onKeyDown={handleKeyDown}
+                            placeholder="Buscar produtos..."
+                            aria-label="Buscar produtos"
+                        />
+                        <button
+                            type="submit"
+                            className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-r-lg text-white"
+                            aria-label="Pesquisar"
+                        >
+                            <FiSearch size={20} />
+                        </button>
+
+                        {/* dropdown histórico/resultados */}
+                        {isSearching && (
+                            <div className="absolute right-12 top-3 text-sm text-gray-500">
+                                Buscando…
+                            </div>
+                        )}
+                        {((showHistory && history.length > 0) || searchResults.length > 0) && (
+                            <div className="absolute top-full left-0 w-full bg-white rounded-lg shadow-lg mt-1 z-50 max-h-64 overflow-auto">
+                                {/* histórico */}
+                                {showHistory &&
+                                    history.length > 0 &&
+                                    searchResults.length === 0 && (
+                                        <div className="p-2">
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className="font-medium text-gray-600">
+                                                    Histórico de buscas
+                                                </span>
+                                                <button
+                                                    onClick={clearHistory}
+                                                    className="text-sm text-red-500"
+                                                >
+                                                    Limpar
+                                                </button>
+                                            </div>
+                                            {history.map((h, idx) => (
+                                                <div
+                                                    key={h}
+                                                    className={`px-3 py-2 hover:bg-gray-100 cursor-pointer text-gray-500 ${selectedIndex === idx ? "bg-gray-200" : ""
+                                                        }`}
+                                                    onMouseDown={() => submitSearch(h)}
+                                                >
+                                                    {h}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                {/* sugestões */}
+                                {searchResults.map((prod, idx) => (
+                                    <div
+                                        key={prod.id}
+                                        onMouseDown={() => submitSearch(prod.name)}
+                                        className={`flex items-center gap-3 px-3 py-2 hover:bg-gray-100 ${selectedIndex === idx ? "bg-gray-200" : ""
+                                            }`}
+                                    >
+                                        <Link
+                                            href={`/product/${prod.slug}`}
+                                            className="flex items-center flex-1"
+                                        >
+                                            <Image
+                                                src={
+                                                    prod.images[0]?.url
+                                                        ? `${API_URL}/files/${prod.images[0].url}`
+                                                        : noImage
+                                                }
+                                                alt={prod.name}
+                                                width={40}
+                                                height={40}
+                                                className="rounded"
+                                            />
+                                            <div className="flex-1 ml-2">
+                                                <p className="text-gray-800">
+                                                    {prod.name.replace(
+                                                        new RegExp(searchTerm, "gi"),
+                                                        (m) => m
+                                                    )}
+                                                </p>
+                                                <p className="text-sm font-semibold text-orange-600">
+                                                    R$ {prod.price_per.toFixed(2)}
+                                                </p>
+                                            </div>
+                                        </Link>
                                     </div>
-                                </Link>
-                            ))}
-                        </div>
-                    )}
+                                ))}
+                                {/* sem resultados */}
+                                {!isSearching &&
+                                    searchTerm.length >= 2 &&
+                                    searchResults.length === 0 &&
+                                    !showHistory && (
+                                        <div className="p-3 text-gray-500">
+                                            Nenhum produto encontrado.
+                                        </div>
+                                    )}
+                            </div>
+                        )}
+                    </form>
                 </div>
 
                 {/* Ícones */}
-                <div className="flex items-center space-x-8">
+                <div className="flex items-center space-x-4">
                     <button
                         className="md:hidden text-white"
                         onClick={() => setMobileSearchOpen((o) => !o)}
                     >
                         <FiSearch size={24} />
                     </button>
-
                     {!loadingAuth && isAuthenticated ? (
                         <button
                             onClick={() => router.push(`/profile/${user?.id}`)}
@@ -328,7 +423,7 @@ export function Navbar() {
                         >
                             {user?.photo ? (
                                 <Image
-                                    src={`${process.env.NEXT_PUBLIC_API_URL}/files/${user.photo}`}
+                                    src={`${API_URL}/files/${user.photo}`}
                                     alt="User"
                                     width={32}
                                     height={32}
@@ -347,7 +442,6 @@ export function Navbar() {
                             <FiLogIn size={24} />
                         </button>
                     )}
-
                     <button
                         onClick={() => router.push("/cart")}
                         className="relative text-white hover:text-gray-200"
@@ -362,18 +456,21 @@ export function Navbar() {
                 </div>
             </div>
 
-            {/* PAINEL MOBILE */}
+            {/* Painel Mobile */}
             {isMobileMenuOpen && (
                 <div
                     className="md:hidden bg-white text-gray-800 p-4 space-y-4 shadow-lg z-50"
                     style={{ maxHeight: "calc(100vh - 56px)", overflowY: "auto" }}
                 >
+                    {/* Busca mobile idêntica ao desktop */}
                     {mobileSearchOpen && (
                         <div ref={searchRef} className="relative">
                             <input
                                 type="text"
                                 value={searchTerm}
                                 onChange={handleSearch}
+                                onFocus={handleFocus}
+                                onKeyDown={handleKeyDown}
                                 placeholder="Buscar produtos..."
                                 className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-orange-500"
                             />
@@ -382,8 +479,34 @@ export function Navbar() {
                                     Buscando...
                                 </div>
                             )}
-                            {searchResults.length > 0 && (
-                                <div className="mt-2 bg-white rounded-lg shadow overflow-hidden z-50">
+                            {(showHistory && history.length > 0) ||
+                                searchResults.length > 0 ? (
+                                <div className="mt-2 bg-white rounded-lg shadow z-50 max-h-64 overflow-auto">
+                                    {/* Reaproveita mesma UI do desktop */}
+                                    {showHistory &&
+                                        history.length > 0 &&
+                                        searchResults.length === 0 && (
+                                            <div className="p-2">
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <span className="font-medium">Histórico</span>
+                                                    <button
+                                                        onClick={clearHistory}
+                                                        className="text-sm text-red-500"
+                                                    >
+                                                        Limpar
+                                                    </button>
+                                                </div>
+                                                {history.map((h, idx) => (
+                                                    <div
+                                                        key={h}
+                                                        className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                                                        onMouseDown={() => submitSearch(h)}
+                                                    >
+                                                        {h}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     {searchResults.map((prod) => (
                                         <Link
                                             key={prod.id}
@@ -393,7 +516,7 @@ export function Navbar() {
                                             <Image
                                                 src={
                                                     prod.images[0]?.url
-                                                        ? `${process.env.NEXT_PUBLIC_API_URL}/files/${prod.images[0].url}`
+                                                        ? `${API_URL}/files/${prod.images[0].url}`
                                                         : noImage
                                                 }
                                                 alt={prod.name}
@@ -411,11 +534,20 @@ export function Navbar() {
                                             </div>
                                         </Link>
                                     ))}
+                                    {!isSearching &&
+                                        searchTerm.length >= 2 &&
+                                        searchResults.length === 0 &&
+                                        !showHistory && (
+                                            <div className="p-3 text-gray-500">
+                                                Nenhum produto encontrado.
+                                            </div>
+                                        )}
                                 </div>
-                            )}
+                            ) : null}
                         </div>
                     )}
 
+                    {/* Menu mobile */}
                     <div className="pt-4 border-t">
                         {menuItems.map((item) => (
                             <MobileNavItem key={item.id} item={item} level={0} />
@@ -424,12 +556,10 @@ export function Navbar() {
                 </div>
             )}
 
-            {/* MENU DESKTOP */}
+            {/* Menu desktop */}
             <nav
                 className="hidden md:block bg-gray-800 relative overflow-visible py-3"
-                style={{
-                    background: colors?.fundo_do_menu || "#111",
-                }}
+                style={{ background: colors?.fundo_do_menu || "#111" }}
             >
                 <ul className="flex flex-wrap gap-x-4 gap-y-2 px-4 py-2">
                     {menuItems.map((item) => (
