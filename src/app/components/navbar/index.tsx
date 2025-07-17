@@ -4,7 +4,6 @@ import { setupAPIClient } from "@/services/api";
 import { AuthContextStore } from "@/app/contexts/AuthContextStore";
 import { useCart } from "@/app/contexts/CartContext";
 import { useTheme } from "@/app/contexts/ThemeContext";
-import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
@@ -47,16 +46,16 @@ type MenuItemDTO = {
 type Store = {
     id: string;
     name: string;
-    slug: string | null;
-    price_per: number;
+    slug: string;
     images: { url: string }[];
+    price_per: number;
 };
 
 export function Navbar() {
-
     const router = useRouter();
     const { colors } = useTheme();
-    const { isAuthenticated, loadingAuth, user, configs } = useContext(AuthContextStore);
+    const { isAuthenticated, loadingAuth, user, configs } =
+        useContext(AuthContextStore);
     const { cartCount } = useCart();
 
     const [menuItems, setMenuItems] = useState<MenuItemDTO[]>([]);
@@ -71,20 +70,24 @@ export function Navbar() {
 
     const searchRef = useRef<HTMLDivElement>(null);
 
-    // fecha dropdown ao clicar fora
+    // Fecha dropdown de busca ao clicar fora
     useEffect(() => {
         function handleClickOutside(e: MouseEvent) {
-            if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+            if (
+                searchRef.current &&
+                !searchRef.current.contains(e.target as Node)
+            ) {
                 setShowHistory(false);
                 setSearchResults([]);
                 setSelectedIndex(-1);
             }
         }
         document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
+        return () =>
+            document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    // carrega menu + histórico
+    // Carrega menu + histórico
     useEffect(() => {
         setupAPIClient()
             .get<MenuItemDTO[]>("/menu/get/store?position=topo_header_menu")
@@ -95,7 +98,7 @@ export function Navbar() {
         if (saved) setHistory(JSON.parse(saved));
     }, []);
 
-    // busca com debounce, consumindo seu endpoint genérico
+    // Busca com debounce
     const doSearch = useRef(
         debounce(async (term: string) => {
             setIsSearching(true);
@@ -103,13 +106,12 @@ export function Navbar() {
                 const api = setupAPIClient();
                 const res = await api.get<{
                     data: Store[];
-                    meta: { total: number; page: number; perPage: number; totalPages: number };
+                    meta: any;
                 }>("/products/search", {
                     params: { q: term, page: 1, perPage: 5 },
                 });
                 setSearchResults(res.data.data || []);
-            } catch (err) {
-                console.error(err);
+            } catch {
                 toast.error("Erro ao buscar produtos.");
             } finally {
                 setIsSearching(false);
@@ -127,16 +129,19 @@ export function Navbar() {
         }
         doSearch(term);
     };
-
     const handleFocus = () => {
         if (history.length > 0) setShowHistory(true);
     };
-
-    // navegação por ↑/↓ no dropdown
     const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
         const list = searchResults.length
             ? searchResults
-            : history.map((h) => ({ id: h, slug: "", name: h, images: [], price_per: 0 }));
+            : history.map((h) => ({
+                id: h,
+                slug: "",
+                name: h,
+                images: [],
+                price_per: 0,
+            }));
         if (e.key === "ArrowDown") {
             e.preventDefault();
             setSelectedIndex((i) => Math.min(i + 1, list.length - 1));
@@ -147,7 +152,6 @@ export function Navbar() {
         }
     };
 
-    // redireciona e salva no histórico
     const submitSearch = (term: string) => {
         setHistory((h) => {
             const updated = [term, ...h.filter((x) => x !== term)].slice(0, 10);
@@ -158,7 +162,6 @@ export function Navbar() {
         setShowHistory(false);
         setSearchTerm("");
     };
-
     const clearHistory = () => {
         localStorage.removeItem(HISTORY_KEY);
         setHistory([]);
@@ -171,7 +174,7 @@ export function Navbar() {
         return item.url!;
     };
 
-    // Componente recursivo desktop
+    // --- DesktopNavItem com onMouseDown para navegação antecipada ---
     const DesktopNavItem = ({
         item,
         depth = 0,
@@ -180,33 +183,45 @@ export function Navbar() {
         depth?: number;
     }) => {
         const [open, setOpen] = useState(false);
-        const leftPos = depth === 0 ? 0 : "100%";
+        const submenuPosition =
+            depth === 0
+                ? { top: "100%", left: 0 }
+                : { top: 0, left: "100%" };
+
         return (
             <li
                 className="relative"
                 onMouseEnter={() => setOpen(true)}
                 onMouseLeave={() => setOpen(false)}
             >
-                <Link
-                    href={buildUrl(item)}
-                    className="block px-4 py-2 text-white hover:bg-gray-700 whitespace-nowrap"
+                <div
+                    className="px-4 py-2 text-white hover:bg-gray-700 whitespace-nowrap cursor-pointer select-none"
+                    onMouseDown={() => router.push(buildUrl(item))}
                 >
                     {item.label}
-                </Link>
+                </div>
+
                 {open && (item.children.length > 0 || item.icon) && (
                     <div
                         className="absolute flex bg-black shadow-lg rounded z-50 overflow-visible"
-                        style={{ top: depth === 0 ? "100%" : 0, left: leftPos, minWidth: 240 }}
+                        style={{ minWidth: 240, ...submenuPosition }}
                     >
                         {item.children.length > 0 && (
                             <ul className="flex-1 divide-y">
-                                {item.children.map((ch) => (
-                                    <DesktopNavItem key={ch.id} item={ch} depth={depth + 1} />
+                                {item.children.map((child) => (
+                                    <DesktopNavItem
+                                        key={child.id}
+                                        item={child}
+                                        depth={depth + 1}
+                                    />
                                 ))}
                             </ul>
                         )}
                         {item.icon && (
-                            <div className={`w-48 h-auto ${item.children.length ? "" : "p-4"}`}>
+                            <div
+                                className={`w-48 h-auto ${item.children.length ? "" : "p-4"
+                                    }`}
+                            >
                                 <Image
                                     src={`${API_URL}/files/${item.icon}`}
                                     alt={`${item.label} banner`}
@@ -222,7 +237,7 @@ export function Navbar() {
         );
     };
 
-    // Componente recursivo mobile
+    // --- MobileNavItem mantém router.push ---
     const MobileNavItem = ({
         item,
         level,
@@ -238,7 +253,7 @@ export function Navbar() {
                     onClick={() =>
                         item.children.length
                             ? setOpen((o) => !o)
-                            : (window.location.href = buildUrl(item))
+                            : router.push(buildUrl(item))
                     }
                 >
                     <span className="font-medium">{item.label}</span>
@@ -259,8 +274,12 @@ export function Navbar() {
                                 />
                             </div>
                         )}
-                        {item.children.map((ch) => (
-                            <MobileNavItem key={ch.id} item={ch} level={level + 1} />
+                        {item.children.map((child) => (
+                            <MobileNavItem
+                                key={child.id}
+                                item={child}
+                                level={level + 1}
+                            />
                         ))}
                     </>
                 )}
@@ -270,7 +289,7 @@ export function Navbar() {
 
     return (
         <header className="relative w-full top-0 z-50">
-            {/* Linha superior */}
+            {/* Barra superior */}
             <div
                 className="flex items-center justify-between py-6 px-4 md:px-8"
                 style={{ background: colors?.fundo_do_menu || "#000" }}
@@ -283,7 +302,10 @@ export function Navbar() {
                     >
                         {isMobileMenuOpen ? <FiX size={28} /> : <FiMenu size={28} />}
                     </button>
-                    <Link href="/">
+                    <div
+                        className="cursor-pointer"
+                        onClick={() => router.push("/")}
+                    >
                         <Image
                             src={configs?.logo ? `${API_URL}/files/${configs.logo}` : noImage}
                             width={120}
@@ -291,11 +313,14 @@ export function Navbar() {
                             alt="Logo"
                             className="object-contain"
                         />
-                    </Link>
+                    </div>
                 </div>
 
-                {/* Busca desktop dentro de um form para capturar Enter */}
-                <div ref={searchRef} className="hidden md:flex flex-1 max-w-lg mx-8 relative">
+                {/* Busca desktop */}
+                <div
+                    ref={searchRef}
+                    className="hidden md:flex flex-1 max-w-lg mx-8 relative"
+                >
                     <form
                         className="flex flex-1 items-center"
                         onSubmit={(e) => {
@@ -306,30 +331,28 @@ export function Navbar() {
                         <input
                             type="text"
                             className="flex-1 px-4 py-2 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-black"
+                            placeholder="Buscar produtos..."
                             value={searchTerm}
                             onChange={handleSearch}
                             onFocus={handleFocus}
                             onKeyDown={handleKeyDown}
-                            placeholder="Buscar produtos..."
-                            aria-label="Buscar produtos"
                         />
                         <button
                             type="submit"
                             className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-r-lg text-white"
-                            aria-label="Pesquisar"
                         >
                             <FiSearch size={20} />
                         </button>
 
-                        {/* dropdown histórico/resultados */}
                         {isSearching && (
                             <div className="absolute right-12 top-3 text-sm text-gray-500">
                                 Buscando…
                             </div>
                         )}
-                        {((showHistory && history.length > 0) || searchResults.length > 0) && (
+
+                        {((showHistory && history.length) || searchResults.length) > 0 && (
                             <div className="absolute top-full left-0 w-full bg-white rounded-lg shadow-lg mt-1 z-50 max-h-64 overflow-auto">
-                                {/* histórico */}
+                                {/* Histórico */}
                                 {showHistory &&
                                     history.length > 0 &&
                                     searchResults.length === 0 && (
@@ -357,7 +380,8 @@ export function Navbar() {
                                             ))}
                                         </div>
                                     )}
-                                {/* sugestões */}
+
+                                {/* Resultados */}
                                 {searchResults.map((prod, idx) => (
                                     <div
                                         key={prod.id}
@@ -365,9 +389,9 @@ export function Navbar() {
                                         className={`flex items-center gap-3 px-3 py-2 hover:bg-gray-100 ${selectedIndex === idx ? "bg-gray-200" : ""
                                             }`}
                                     >
-                                        <Link
-                                            href={`/product/${prod.slug}`}
-                                            className="flex items-center flex-1"
+                                        <div
+                                            className="flex items-center flex-1 cursor-pointer"
+                                            onClick={() => router.push(`/product/${prod.slug}`)}
                                         >
                                             <Image
                                                 src={
@@ -381,23 +405,18 @@ export function Navbar() {
                                                 className="rounded"
                                             />
                                             <div className="flex-1 ml-2">
-                                                <p className="text-gray-800">
-                                                    {prod.name.replace(
-                                                        new RegExp(searchTerm, "gi"),
-                                                        (m) => m
-                                                    )}
-                                                </p>
+                                                <p className="text-gray-800">{prod.name}</p>
                                                 <p className="text-sm font-semibold text-orange-600">
                                                     R$ {prod.price_per.toFixed(2)}
                                                 </p>
                                             </div>
-                                        </Link>
+                                        </div>
                                     </div>
                                 ))}
-                                {/* sem resultados */}
+
                                 {!isSearching &&
                                     searchTerm.length >= 2 &&
-                                    searchResults.length === 0 &&
+                                    !searchResults.length &&
                                     !showHistory && (
                                         <div className="p-3 text-gray-500">
                                             Nenhum produto encontrado.
@@ -408,7 +427,7 @@ export function Navbar() {
                     </form>
                 </div>
 
-                {/* Ícones */}
+                {/* Ícones usuário/carrinho */}
                 <div className="flex items-center space-x-4">
                     <button
                         className="md:hidden text-white"
@@ -416,35 +435,36 @@ export function Navbar() {
                     >
                         <FiSearch size={24} />
                     </button>
-                    {!loadingAuth && isAuthenticated ? (
-                        <button
-                            onClick={() => router.push(`/profile/${user?.id}`)}
-                            className="text-white hover:text-gray-200"
-                        >
-                            {user?.photo ? (
-                                <Image
-                                    src={`${API_URL}/files/${user.photo}`}
-                                    alt="User"
-                                    width={32}
-                                    height={32}
-                                    className="rounded-full"
-                                />
-                            ) : (
-                                <FiUser size={24} />
-                            )}
-                        </button>
-                    ) : (
-                        <button
-                            onClick={() => router.push("/login")}
-                            className="text-white hover:text-gray-200 flex items-center gap-2"
-                        >
-                            <span className="text-sm">Login | Cadastre-se</span>
-                            <FiLogIn size={24} />
-                        </button>
-                    )}
-                    <button
+                    {!loadingAuth &&
+                        (isAuthenticated ? (
+                            <div
+                                className="text-white cursor-pointer"
+                                onClick={() => router.push(`/profile/${user?.id}`)}
+                            >
+                                {user?.photo ? (
+                                    <Image
+                                        src={`${API_URL}/files/${user.photo}`}
+                                        alt="User"
+                                        width={32}
+                                        height={32}
+                                        className="rounded-full"
+                                    />
+                                ) : (
+                                    <FiUser size={24} />
+                                )}
+                            </div>
+                        ) : (
+                            <div
+                                className="text-white hover:text-gray-200 flex items-center gap-2 cursor-pointer"
+                                onClick={() => router.push("/login")}
+                            >
+                                <span className="text-sm">Login | Cadastre-se</span>
+                                <FiLogIn size={24} />
+                            </div>
+                        ))}
+                    <div
+                        className="relative text-white cursor-pointer"
                         onClick={() => router.push("/cart")}
-                        className="relative text-white hover:text-gray-200"
                     >
                         <FiShoppingCart size={24} />
                         {cartCount > 0 && (
@@ -452,7 +472,7 @@ export function Navbar() {
                                 {cartCount}
                             </span>
                         )}
-                    </button>
+                    </div>
                 </div>
             </div>
 
@@ -462,27 +482,25 @@ export function Navbar() {
                     className="md:hidden bg-white text-gray-800 p-4 space-y-4 shadow-lg z-50"
                     style={{ maxHeight: "calc(100vh - 56px)", overflowY: "auto" }}
                 >
-                    {/* Busca mobile idêntica ao desktop */}
+                    {/* Busca mobile */}
                     {mobileSearchOpen && (
                         <div ref={searchRef} className="relative">
                             <input
                                 type="text"
+                                className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                placeholder="Buscar produtos..."
                                 value={searchTerm}
                                 onChange={handleSearch}
                                 onFocus={handleFocus}
                                 onKeyDown={handleKeyDown}
-                                placeholder="Buscar produtos..."
-                                className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-orange-500"
                             />
                             {isSearching && (
                                 <div className="absolute right-3 top-3 text-sm text-gray-500">
                                     Buscando...
                                 </div>
                             )}
-                            {(showHistory && history.length > 0) ||
-                                searchResults.length > 0 ? (
+                            {((showHistory && history.length) || searchResults.length) > 0 && (
                                 <div className="mt-2 bg-white rounded-lg shadow z-50 max-h-64 overflow-auto">
-                                    {/* Reaproveita mesma UI do desktop */}
                                     {showHistory &&
                                         history.length > 0 &&
                                         searchResults.length === 0 && (
@@ -496,7 +514,7 @@ export function Navbar() {
                                                         Limpar
                                                     </button>
                                                 </div>
-                                                {history.map((h, idx) => (
+                                                {history.map((h) => (
                                                     <div
                                                         key={h}
                                                         className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
@@ -508,10 +526,10 @@ export function Navbar() {
                                             </div>
                                         )}
                                     {searchResults.map((prod) => (
-                                        <Link
+                                        <div
                                             key={prod.id}
-                                            href={`/product/${prod.slug}`}
-                                            className="flex items-center gap-3 px-3 py-2 hover:bg-gray-100"
+                                            className="flex items-center gap-3 px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                                            onClick={() => router.push(`/product/${prod.slug}`)}
                                         >
                                             <Image
                                                 src={
@@ -526,28 +544,26 @@ export function Navbar() {
                                             />
                                             <div className="flex-1">
                                                 <p className="text-gray-800">{prod.name}</p>
-                                                {prod.price_per != null && (
-                                                    <p className="text-sm font-semibold text-orange-600">
-                                                        R$ {prod.price_per.toFixed(2)}
-                                                    </p>
-                                                )}
+                                                <p className="text-sm font-semibold text-orange-600">
+                                                    R$ {prod.price_per.toFixed(2)}
+                                                </p>
                                             </div>
-                                        </Link>
+                                        </div>
                                     ))}
                                     {!isSearching &&
                                         searchTerm.length >= 2 &&
-                                        searchResults.length === 0 &&
+                                        !searchResults.length &&
                                         !showHistory && (
                                             <div className="p-3 text-gray-500">
                                                 Nenhum produto encontrado.
                                             </div>
                                         )}
                                 </div>
-                            ) : null}
+                            )}
                         </div>
                     )}
 
-                    {/* Menu mobile */}
+                    {/* Menu Mobile */}
                     <div className="pt-4 border-t">
                         {menuItems.map((item) => (
                             <MobileNavItem key={item.id} item={item} level={0} />
@@ -556,7 +572,7 @@ export function Navbar() {
                 </div>
             )}
 
-            {/* Menu desktop */}
+            {/* Menu Desktop */}
             <nav
                 className="hidden md:block bg-gray-800 relative overflow-visible py-3"
                 style={{ background: colors?.fundo_do_menu || "#111" }}
