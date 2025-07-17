@@ -14,6 +14,7 @@ import {
     FiX,
     FiSearch,
     FiChevronDown,
+    FiChevronRight,
 } from "react-icons/fi";
 import {
     ChangeEvent,
@@ -67,12 +68,15 @@ export function Navbar() {
     const [selectedIndex, setSelectedIndex] = useState(-1);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+    const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
 
     const searchRef = useRef<HTMLDivElement>(null);
+    const mobileMenuRef = useRef<HTMLDivElement>(null);
 
-    // Fecha dropdown de busca ao clicar fora
+    // Fecha dropdowns ao clicar fora
     useEffect(() => {
         function handleClickOutside(e: MouseEvent) {
+            // Fecha busca
             if (
                 searchRef.current &&
                 !searchRef.current.contains(e.target as Node)
@@ -81,11 +85,21 @@ export function Navbar() {
                 setSearchResults([]);
                 setSelectedIndex(-1);
             }
+
+            // Fecha menu mobile
+            if (
+                isMobileMenuOpen &&
+                mobileMenuRef.current &&
+                !mobileMenuRef.current.contains(e.target as Node)
+            ) {
+                setIsMobileMenuOpen(false);
+                setOpenSubmenus({});
+            }
         }
+
         document.addEventListener("mousedown", handleClickOutside);
-        return () =>
-            document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [isMobileMenuOpen]);
 
     // Carrega menu + histórico
     useEffect(() => {
@@ -129,9 +143,11 @@ export function Navbar() {
         }
         doSearch(term);
     };
+
     const handleFocus = () => {
         if (history.length > 0) setShowHistory(true);
     };
+
     const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
         const list = searchResults.length
             ? searchResults
@@ -161,7 +177,9 @@ export function Navbar() {
         router.push(`/search?query=${encodeURIComponent(term)}`);
         setShowHistory(false);
         setSearchTerm("");
+        setMobileSearchOpen(false);
     };
+
     const clearHistory = () => {
         localStorage.removeItem(HISTORY_KEY);
         setHistory([]);
@@ -174,7 +192,7 @@ export function Navbar() {
         return item.url!;
     };
 
-    // --- DesktopNavItem com onMouseDown para navegação antecipada ---
+    // --- DesktopNavItem ---
     const DesktopNavItem = ({
         item,
         depth = 0,
@@ -237,34 +255,56 @@ export function Navbar() {
         );
     };
 
-    // --- MobileNavItem mantém router.push ---
-    const MobileNavItem = ({
-        item,
-        level,
-    }: {
-        item: MenuItemDTO;
-        level: number;
-    }) => {
-        const [open, setOpen] = useState(false);
-        return (
-            <div style={{ paddingLeft: level * 16 }} className="mb-2">
-                <div
-                    className="flex items-center justify-between py-2 text-gray-800 hover:text-orange-600 cursor-pointer"
-                    onClick={() =>
-                        item.children.length
-                            ? setOpen((o) => !o)
-                            : router.push(buildUrl(item))
-                    }
-                >
-                    <span className="font-medium">{item.label}</span>
+    // --- Mobile Menu Item ---
+    const toggleSubmenu = (itemId: string) => {
+        setOpenSubmenus(prev => ({
+            ...prev,
+            [itemId]: !prev[itemId]
+        }));
+    };
+
+    const handleNavigation = (item: MenuItemDTO) => {
+        router.push(buildUrl(item));
+        setIsMobileMenuOpen(false);
+        setOpenSubmenus({});
+    };
+
+    const renderMobileMenuItems = (items: MenuItemDTO[], level = 0) => {
+        return items.map((item) => (
+            <div key={item.id} className="mb-1">
+                <div className="flex items-center justify-between">
+                    {/* Item clicável para navegação */}
+                    <div
+                        className={`flex-1 py-3 px-4 rounded-lg cursor-pointer ${openSubmenus[item.id]
+                            ? "bg-gray-100 text-orange-600"
+                            : "hover:bg-gray-50"
+                            }`}
+                        onClick={() => handleNavigation(item)}
+                    >
+                        {item.label}
+                    </div>
+
+                    {/* Botão para expandir submenu */}
                     {item.children.length > 0 && (
-                        <FiChevronDown className={open ? "rotate-180" : ""} />
+                        <button
+                            className="p-3 text-gray-500"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                toggleSubmenu(item.id);
+                            }}
+                        >
+                            <FiChevronRight
+                                className={`transform transition-transform ${openSubmenus[item.id] ? "rotate-90" : ""
+                                    }`}
+                            />
+                        </button>
                     )}
                 </div>
-                {open && (
-                    <>
+
+                {openSubmenus[item.id] && item.children.length > 0 && (
+                    <div className="ml-4 pl-2 border-l border-gray-200 mt-1">
                         {item.icon && (
-                            <div className="my-2">
+                            <div className="my-3">
                                 <Image
                                     src={`${API_URL}/files/${item.icon}`}
                                     alt={`${item.label} banner`}
@@ -274,17 +314,11 @@ export function Navbar() {
                                 />
                             </div>
                         )}
-                        {item.children.map((child) => (
-                            <MobileNavItem
-                                key={child.id}
-                                item={child}
-                                level={level + 1}
-                            />
-                        ))}
-                    </>
+                        {renderMobileMenuItems(item.children, level + 1)}
+                    </div>
                 )}
             </div>
-        );
+        ));
     };
 
     return (
@@ -431,7 +465,11 @@ export function Navbar() {
                 <div className="flex items-center space-x-4">
                     <button
                         className="md:hidden text-white"
-                        onClick={() => setMobileSearchOpen((o) => !o)}
+                        onClick={() => {
+                            setMobileSearchOpen((o) => !o);
+                            setIsMobileMenuOpen(false);
+                            setOpenSubmenus({});
+                        }}
                     >
                         <FiSearch size={24} />
                     </button>
@@ -439,7 +477,11 @@ export function Navbar() {
                         (isAuthenticated ? (
                             <div
                                 className="text-white cursor-pointer"
-                                onClick={() => router.push(`/profile/${user?.id}`)}
+                                onClick={() => {
+                                    router.push(`/profile/${user?.id}`);
+                                    setIsMobileMenuOpen(false);
+                                    setOpenSubmenus({});
+                                }}
                             >
                                 {user?.photo ? (
                                     <Image
@@ -456,7 +498,11 @@ export function Navbar() {
                         ) : (
                             <div
                                 className="text-white hover:text-gray-200 flex items-center gap-2 cursor-pointer"
-                                onClick={() => router.push("/login")}
+                                onClick={() => {
+                                    router.push("/login");
+                                    setIsMobileMenuOpen(false);
+                                    setOpenSubmenus({});
+                                }}
                             >
                                 <span className="text-sm">Login | Cadastre-se</span>
                                 <FiLogIn size={24} />
@@ -464,7 +510,11 @@ export function Navbar() {
                         ))}
                     <div
                         className="relative text-white cursor-pointer"
-                        onClick={() => router.push("/cart")}
+                        onClick={() => {
+                            router.push("/cart");
+                            setIsMobileMenuOpen(false);
+                            setOpenSubmenus({});
+                        }}
                     >
                         <FiShoppingCart size={24} />
                         {cartCount > 0 && (
@@ -476,99 +526,130 @@ export function Navbar() {
                 </div>
             </div>
 
-            {/* Painel Mobile */}
+            {/* Menu Mobile */}
             {isMobileMenuOpen && (
                 <div
-                    className="md:hidden bg-white text-gray-800 p-4 space-y-4 shadow-lg z-50"
-                    style={{ maxHeight: "calc(100vh - 56px)", overflowY: "auto" }}
+                    ref={mobileMenuRef}
+                    className="md:hidden bg-white text-gray-800 shadow-lg z-50 fixed inset-0 top-16 overflow-y-auto"
                 >
-                    {/* Busca mobile */}
-                    {mobileSearchOpen && (
-                        <div ref={searchRef} className="relative">
-                            <input
-                                type="text"
-                                className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-orange-500"
-                                placeholder="Buscar produtos..."
-                                value={searchTerm}
-                                onChange={handleSearch}
-                                onFocus={handleFocus}
-                                onKeyDown={handleKeyDown}
-                            />
-                            {isSearching && (
-                                <div className="absolute right-3 top-3 text-sm text-gray-500">
-                                    Buscando...
-                                </div>
-                            )}
-                            {((showHistory && history.length) || searchResults.length) > 0 && (
-                                <div className="mt-2 bg-white rounded-lg shadow z-50 max-h-64 overflow-auto">
-                                    {showHistory &&
-                                        history.length > 0 &&
-                                        searchResults.length === 0 && (
-                                            <div className="p-2">
-                                                <div className="flex justify-between items-center mb-2">
-                                                    <span className="font-medium">Histórico</span>
-                                                    <button
-                                                        onClick={clearHistory}
-                                                        className="text-sm text-red-500"
-                                                    >
-                                                        Limpar
-                                                    </button>
-                                                </div>
-                                                {history.map((h) => (
-                                                    <div
-                                                        key={h}
-                                                        className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
-                                                        onMouseDown={() => submitSearch(h)}
-                                                    >
-                                                        {h}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    {searchResults.map((prod) => (
-                                        <div
-                                            key={prod.id}
-                                            className="flex items-center gap-3 px-3 py-2 hover:bg-gray-100 cursor-pointer"
-                                            onClick={() => router.push(`/product/${prod.slug}`)}
-                                        >
-                                            <Image
-                                                src={
-                                                    prod.images[0]?.url
-                                                        ? `${API_URL}/files/${prod.images[0].url}`
-                                                        : noImage
-                                                }
-                                                alt={prod.name}
-                                                width={40}
-                                                height={40}
-                                                className="rounded"
-                                            />
-                                            <div className="flex-1">
-                                                <p className="text-gray-800">{prod.name}</p>
-                                                <p className="text-sm font-semibold text-orange-600">
-                                                    R$ {prod.price_per.toFixed(2)}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    ))}
-                                    {!isSearching &&
-                                        searchTerm.length >= 2 &&
-                                        !searchResults.length &&
-                                        !showHistory && (
-                                            <div className="p-3 text-gray-500">
-                                                Nenhum produto encontrado.
-                                            </div>
-                                        )}
-                                </div>
-                            )}
+                    <div className="p-4">
+                        <div className="mb-4">
+                            <h3 className="font-bold text-lg mb-2">Menu</h3>
+                        </div>
+
+                        <div className="space-y-1">
+                            {renderMobileMenuItems(menuItems)}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Busca mobile (independente do menu) */}
+            {mobileSearchOpen && (
+                <div
+                    ref={searchRef}
+                    className="md:hidden bg-white p-4 shadow-lg z-40 fixed inset-0 top-16"
+                >
+                    <div className="relative mb-2">
+                        <input
+                            type="text"
+                            className="w-full px-4 py-3 rounded-lg border-2 focus:outline-none focus:border-orange-500 text-black"
+                            placeholder="Buscar produtos..."
+                            value={searchTerm}
+                            onChange={handleSearch}
+                            onFocus={handleFocus}
+                            onKeyDown={handleKeyDown}
+                            autoFocus
+                        />
+                        <button
+                            className="absolute right-3 top-3 text-gray-500"
+                            onClick={() => setMobileSearchOpen(false)}
+                        >
+                            <FiX size={24} />
+                        </button>
+                    </div>
+
+                    {isSearching && (
+                        <div className="text-center py-4 text-gray-500">
+                            Buscando produtos...
                         </div>
                     )}
 
-                    {/* Menu Mobile */}
-                    <div className="pt-4 border-t">
-                        {menuItems.map((item) => (
-                            <MobileNavItem key={item.id} item={item} level={0} />
-                        ))}
-                    </div>
+                    {((showHistory && history.length) || searchResults.length) > 0 && (
+                        <div className="mt-2 bg-white rounded-lg max-h-[60vh] overflow-auto">
+                            {showHistory &&
+                                history.length > 0 &&
+                                searchResults.length === 0 && (
+                                    <div className="mb-4">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <span className="font-medium">Histórico de buscas</span>
+                                            <button
+                                                onClick={clearHistory}
+                                                className="text-sm text-red-500"
+                                            >
+                                                Limpar
+                                            </button>
+                                        </div>
+                                        <div className="space-y-1">
+                                            {history.map((h) => (
+                                                <div
+                                                    key={h}
+                                                    className="px-4 py-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer"
+                                                    onClick={() => submitSearch(h)}
+                                                >
+                                                    {h}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                            {searchResults.length > 0 && (
+                                <div className="mb-4">
+                                    <h4 className="font-medium mb-2">Resultados</h4>
+                                    <div className="space-y-2">
+                                        {searchResults.map((prod) => (
+                                            <div
+                                                key={prod.id}
+                                                className="flex items-center gap-3 px-4 py-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer"
+                                                onClick={() => {
+                                                    router.push(`/product/${prod.slug}`);
+                                                    setMobileSearchOpen(false);
+                                                }}
+                                            >
+                                                <Image
+                                                    src={
+                                                        prod.images[0]?.url
+                                                            ? `${API_URL}/files/${prod.images[0].url}`
+                                                            : noImage
+                                                    }
+                                                    alt={prod.name}
+                                                    width={48}
+                                                    height={48}
+                                                    className="rounded"
+                                                />
+                                                <div className="flex-1">
+                                                    <p className="text-gray-800 font-medium">{prod.name}</p>
+                                                    <p className="text-sm font-semibold text-orange-600">
+                                                        R$ {prod.price_per.toFixed(2)}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {!isSearching &&
+                                searchTerm.length >= 2 &&
+                                !searchResults.length &&
+                                !showHistory && (
+                                    <div className="text-center py-4 text-gray-500">
+                                        Nenhum produto encontrado.
+                                    </div>
+                                )}
+                        </div>
+                    )}
                 </div>
             )}
 
