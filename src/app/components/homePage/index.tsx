@@ -1,6 +1,7 @@
 "use client"
 
 import { Newsletter } from "../newsletter"; 
+import Offers from "../offers";
 import MarketingPopup from "../popups/marketingPopup"; 
 
 const HomePage = () => {
@@ -10,6 +11,7 @@ const HomePage = () => {
                 position="POPUP"
                 local="Pagina_inicial"
             />
+            <Offers />
             <Newsletter />
         </div>
     );

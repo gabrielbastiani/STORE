@@ -13,8 +13,10 @@ import {
     FiMenu,
     FiX,
     FiSearch,
-    FiChevronDown,
     FiChevronRight,
+    FiTrash2,
+    FiPlus,
+    FiMinus,
 } from "react-icons/fi";
 import {
     ChangeEvent,
@@ -53,11 +55,27 @@ type Store = {
 };
 
 export function Navbar() {
+
     const router = useRouter();
+
     const { colors } = useTheme();
-    const { isAuthenticated, loadingAuth, user, configs } =
-        useContext(AuthContextStore);
-    const { cartCount } = useCart();
+    const { isAuthenticated, loadingAuth, user, configs } = useContext(AuthContextStore);
+    const {
+        cart,         // { id, items: CartItem[], subtotal, shippingCost, total }
+        cartCount,    // número total de produtos
+        loading: cartLoading,
+        updateItem,   // (itemId: string, qty: number) => Promise<void>
+        removeItem,   // (itemId: string) => Promise<void>
+    } = useCart();
+
+    // estado para exibir mini‑cart ao hover
+    const [showCartPopup, setShowCartPopup] = useState(false);
+
+    // formata BRL
+    const fmt = new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+    }).format;
 
     const [menuItems, setMenuItems] = useState<MenuItemDTO[]>([]);
     const [searchTerm, setSearchTerm] = useState("");
@@ -174,7 +192,7 @@ export function Navbar() {
             localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
             return updated;
         });
-        router.push(`/search?query=${encodeURIComponent(term)}`);
+        router.push(`/busca?query=${encodeURIComponent(term)}`);
         setShowHistory(false);
         setSearchTerm("");
         setMobileSearchOpen(false);
@@ -322,7 +340,7 @@ export function Navbar() {
     };
 
     return (
-        <header className="relative w-full top-0 z-50">
+        <header className="sticky top-0 left-0 w-full z-50">
             {/* Barra superior */}
             <div
                 className="flex items-center justify-between py-6 px-4 md:px-8"
@@ -425,7 +443,7 @@ export function Navbar() {
                                     >
                                         <div
                                             className="flex items-center flex-1 cursor-pointer"
-                                            onClick={() => router.push(`/product/${prod.slug}`)}
+                                            onClick={() => router.push(`${prod.slug}`)}
                                         >
                                             <Image
                                                 src={
@@ -441,7 +459,7 @@ export function Navbar() {
                                             <div className="flex-1 ml-2">
                                                 <p className="text-gray-800">{prod.name}</p>
                                                 <p className="text-sm font-semibold text-orange-600">
-                                                    R$ {prod.price_per.toFixed(2)}
+                                                    {fmt(prod.price_per)}
                                                 </p>
                                             </div>
                                         </div>
@@ -508,24 +526,127 @@ export function Navbar() {
                                 <FiLogIn size={24} />
                             </div>
                         ))}
+
                     <div
-                        className="relative text-white cursor-pointer"
+                        className="relative text-white cursor-pointer flex items-center"
                         onClick={() => {
-                            router.push("/cart");
                             setIsMobileMenuOpen(false);
                             setOpenSubmenus({});
                         }}
+                        onMouseEnter={() => setShowCartPopup(true)}
+                        onMouseLeave={() => setShowCartPopup(false)}
                     >
-                        <FiShoppingCart size={24} />
-                        {cartCount > 0 && (
-                            <span className="absolute -top-1 -right-2 bg-red-600 text-white text-xs rounded-full px-1">
-                                {cartCount}
-                            </span>
+                        <div className="relative inline-block w-6 h-6">
+                            <FiShoppingCart
+                                size={24}
+                                className="absolute inset-0 w-6 h-6"
+                                onClick={() => router.push("/carrinho")}
+                            />
+                            {cartCount > 0 && (
+                                <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full px-1">
+                                    {cartCount}
+                                </span>
+                            )}
+                        </div>
+
+                        {/* total ao lado */}
+                        <span className="ml-2 font-semibold text-sm">
+                            {cartLoading ? "R$ –" : fmt(cart.total)}
+                        </span>
+
+                        {showCartPopup && (
+                            <div className="absolute right-0 top-full w-80 bg-white shadow-lg rounded border border-gray-200 z-50 p-4">
+                                {/* Se o carrinho ainda está carregando */}
+                                {cartLoading && (
+                                    <p className="text-center text-gray-500 py-4">Carregando...</p>
+                                )}
+
+                                {/* Se carregou porém vazio */}
+                                {!cartLoading && cart?.items.length === 0 && (
+                                    <p className="text-center text-gray-500 py-4">
+                                        Carrinho vazio
+                                    </p>
+                                )}
+
+                                {/* Lista de itens */}
+                                {!cartLoading &&
+                                    cart?.items.map((item) => (
+                                        <div
+                                            key={item.id}
+                                            className="flex items-start mb-4 last:mb-0"
+                                        >
+                                            {/* imagem do produto (se existir) */}
+                                            <div className="w-16 h-16 flex-shrink-0 relative rounded overflow-hidden bg-gray-100">
+                                                <Image
+                                                    src={
+                                                        item.images
+                                                            ? `${API_URL}/files/${item.images}`
+                                                            : noImage
+                                                    }
+                                                    alt={item.name}
+                                                    fill
+                                                    className="object-cover"
+                                                />
+                                            </div>
+
+                                            {/* dados */}
+                                            <div className="flex-1 ml-3">
+                                                <p className="text-gray-800 font-medium">{item.name}</p>
+                                                <p className="text-gray-600 text-sm">
+                                                    {fmt(item.price)}
+                                                </p>
+                                                <div className="flex items-center mt-2">
+                                                    <button
+                                                        onClick={() =>
+                                                            updateItem(item.id, Math.max(1, item.quantity - 1))
+                                                        }
+                                                        disabled={item.quantity <= 1}
+                                                        className="p-1 text-gray-400 disabled:opacity-50"
+                                                    >
+                                                        <FiMinus />
+                                                    </button>
+                                                    <span className="px-2 text-gray-700">
+                                                        {item.quantity}
+                                                    </span>
+                                                    <button
+                                                        onClick={() =>
+                                                            updateItem(item.id, item.quantity + 1)
+                                                        }
+                                                        className="p-1 text-gray-400"
+                                                    >
+                                                        <FiPlus />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => removeItem(item.id)}
+                                                        className="ml-4 p-1 text-gray-400 hover:text-red-600"
+                                                    >
+                                                        <FiTrash2 />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                {/* Total e link continuar */}
+                                {!cartLoading && cart?.items.length! > 0 && (
+                                    <>
+                                        <div className="border-t pt-3 mt-3 flex justify-between font-semibold">
+                                            <span className="text-black">TOTAL</span>
+                                            <span className="text-black">{fmt(cart.total)}</span>
+                                        </div>
+                                        <button
+                                            onClick={() => router.push("/carrinho")}
+                                            className="mt-4 w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded text-center font-semibold"
+                                        >
+                                            IR PARA O PAGAMENTO
+                                        </button>
+                                    </>
+                                )}
+                            </div>
                         )}
                     </div>
                 </div>
             </div>
-
             {/* Menu Mobile */}
             {isMobileMenuOpen && (
                 <div
@@ -613,7 +734,7 @@ export function Navbar() {
                                                 key={prod.id}
                                                 className="flex items-center gap-3 px-4 py-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer"
                                                 onClick={() => {
-                                                    router.push(`/product/${prod.slug}`);
+                                                    router.push(`${prod.slug}`);
                                                     setMobileSearchOpen(false);
                                                 }}
                                             >
@@ -631,7 +752,7 @@ export function Navbar() {
                                                 <div className="flex-1">
                                                     <p className="text-gray-800 font-medium">{prod.name}</p>
                                                     <p className="text-sm font-semibold text-orange-600">
-                                                        R$ {prod.price_per.toFixed(2)}
+                                                        {fmt(prod.price_per)}
                                                     </p>
                                                 </div>
                                             </div>

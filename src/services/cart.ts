@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Cart, CartItem } from './../app/contexts/types';
+import { Cart } from 'Types/types'; 
 
 const API = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL,
