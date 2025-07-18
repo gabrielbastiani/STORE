@@ -1,5 +1,6 @@
 "use client"
 
+import Highlights from "../highlights";
 import { Newsletter } from "../newsletter"; 
 import Offers from "../offers";
 import MarketingPopup from "../popups/marketingPopup"; 
@@ -13,6 +14,7 @@ const HomePage = () => {
             />
             <Offers />
             <Newsletter />
+            <Highlights />
         </div>
     );
 };

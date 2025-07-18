@@ -1,6 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useTheme } from "@/app/contexts/ThemeContext";
+import { useCart } from "@/app/contexts/CartContext";
+import { AuthContextStore } from "@/app/contexts/AuthContextStore";
+import { useContext, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -10,14 +13,7 @@ import {
     FiChevronLeft,
 } from "react-icons/fi";
 
-interface CartItem {
-    id: string;
-    name: string;
-    imageUrl: string;
-    price: number;
-    quantity: number;
-    pricePerInstallment: number; // price/12
-}
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 interface ShippingOption {
     id: string;
@@ -27,160 +23,144 @@ interface ShippingOption {
 }
 
 export default function CartPage() {
-    // --- Estado do carrinho (substituir por contexto ou fetch real) ---
-    const [items, setItems] = useState<CartItem[]>([
-        {
-            id: "1",
-            name: "Tocha MIG SU 180 Black 3 Metros",
-            imageUrl: "/tocha1.jpg",
-            price: 380,
-            quantity: 2,
-            pricePerInstallment: 380 / 9,
-        },
-        {
-            id: "2",
-            name: "Tocha MIG/MAG SU 335 3 metros rosca grossa euro conector",
-            imageUrl: "/tocha2.jpg",
-            price: 1076.53,
-            quantity: 1,
-            pricePerInstallment: 1076.53 / 12,
-        },
-    ]);
 
-    // --- Estado de CEP/Frete ---
+    const { colors } = useTheme();
+    const { configs } = useContext(AuthContextStore);
+    // Contexto do carrinho
+    const {
+        cart,            // { id, items: CartItem[], subtotal, shippingCost, total }
+        cartCount,
+        loading: cartLoading,
+        updateItem,
+        removeItem,
+        clearCart,
+    } = useCart();
+
+    // CEP / frete
     const [cep, setCep] = useState("");
     const [shippingOptions, setShippingOptions] = useState<ShippingOption[]>([]);
-    const [selectedShipping, setSelectedShipping] = useState<string | null>(
-        null
-    );
+    const [selectedShipping, setSelectedShipping] = useState<string | null>(null);
 
-    // --- Cupom de desconto ---
+    // Cupom
     const [coupon, setCoupon] = useState("");
     const [discountValue, setDiscountValue] = useState(0);
 
-    // Subtotais
-    const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
-    const total = subtotal - discountValue + (selectedShipping
-        ? shippingOptions.find((o) => o.id === selectedShipping)?.price || 0
-        : 0);
-
-    // Manipula quantidade
-    function changeQty(id: string, delta: number) {
-        setItems((prev) =>
-            prev.map((i) =>
-                i.id === id
-                    ? { ...i, quantity: Math.max(1, i.quantity + delta) }
-                    : i
-            )
-        );
+    // Aplica cupom (exemplo 10% de desconto)
+    function applyCoupon() {
+        setDiscountValue(cart.subtotal * 0.1);
     }
 
-    // Remove item
-    function removeItem(id: string) {
-        setItems((prev) => prev.filter((i) => i.id !== id));
-    }
-
-    // Calcula frete (stub; chamar API real)
+    // Simula frete
     function calculateShipping() {
-        // TODO: fetch(`/api/frete?cep=${cep}`)
-        // Exemplo fixo:
         setShippingOptions([
             { id: "cca", name: "CCA EXPRESS – Normal", price: 51.39, deliveryTime: "Em até 2 dias úteis" },
             { id: "sedex", name: "CORREIOS – SEDEX", price: 78.99, deliveryTime: "Em até 1 dia útil" },
             { id: "pac", name: "CORREIOS – PAC", price: 100.42, deliveryTime: "Em até 6 dias úteis" },
-            { id: "sedex12", name: "CORREIOS – SEDEX 12 CONTRATO AG", price: 159.89, deliveryTime: "Em até 1 dia útil" },
-            { id: "sedex_fg", name: "CORREIOS – SEDEX", price: 344.28, deliveryTime: "Em até 3 dias úteis" },
         ]);
         setSelectedShipping("cca");
     }
 
-    // Aplica cupom (stub; chamar API real)
-    function applyCoupon() {
-        // TODO: fetch(`/api/cupom?code=${coupon}`)
-        // Exemplo: 10% de desconto
-        const disc = subtotal * 0.1;
-        setDiscountValue(disc);
-    }
-
-    // Formata real
+    // Formata moeda
     const fmt = new Intl.NumberFormat("pt-BR", {
         style: "currency",
         currency: "BRL",
     }).format;
 
+    // Total dinâmico incluindo desconto e frete
+    const currentFrete = selectedShipping
+        ? shippingOptions.find((o) => o.id === selectedShipping)?.price || 0
+        : 0;
+    const total = cart.subtotal - discountValue + currentFrete;
+
     return (
         <div className="min-h-screen bg-gray-50">
             {/* Header */}
-            <header className="flex items-center justify-between bg-white px-4 py-3 shadow-sm">
-                <Link href="/" className="flex items-center text-gray-700">
+            <header
+                className="flex items-center justify-between bg-white px-4 py-3 shadow-sm"
+                style={{ background: colors?.fundo_do_menu || "#000" }}
+            >
+                <Link href="/" className="flex items-center text-white">
                     <FiChevronLeft className="mr-2 text-xl" />
                     VOLTAR
                 </Link>
                 <div>
                     <Image
-                        src="/logo-sumig.png"
-                        alt="Loja Sumig"
+                        src={`${API_URL}/files/${configs?.logo}`}
+                        alt={configs?.name || "loja"}
                         width={120}
                         height={32}
                     />
                 </div>
-                <span className="text-sm text-gray-600">Ambiente 100% seguro</span>
+                <span className="text-sm text-white">Ambiente 100% seguro</span>
             </header>
 
             {/* Conteúdo */}
             <main className="container mx-auto px-4 py-8 grid lg:grid-cols-3 gap-8">
                 {/* Itens do carrinho */}
                 <section className="lg:col-span-2 space-y-4">
-                    {items.map((item) => (
-                        <div
-                            key={item.id}
-                            className="flex items-center bg-white p-4 rounded shadow"
-                        >
-                            <div className="relative w-28 h-20 flex-shrink-0">
-                                <Image
-                                    src={item.imageUrl}
-                                    alt={item.name}
-                                    fill
-                                    className="object-cover rounded"
-                                />
-                            </div>
-                            <div className="flex-1 px-4">
-                                <p className="text-gray-800">{item.name}</p>
-                                <p className="mt-1 text-sm text-gray-600">
-                                    R$ {fmt(item.price)} cada
-                                </p>
-                            </div>
-                            <button
-                                onClick={() => removeItem(item.id)}
-                                className="p-2 text-gray-400 hover:text-red-600"
+                    {cartLoading && (
+                        <p className="text-center text-gray-500">Carregando carrinho…</p>
+                    )}
+                    {!cartLoading && cart.items.length === 0 && (
+                        <p className="text-center text-gray-500">Carrinho vazio</p>
+                    )}
+                    {!cartLoading &&
+                        cart.items.map((item) => (
+                            <div
+                                key={item.id}
+                                className="flex items-center bg-white p-4 rounded shadow"
                             >
-                                <FiTrash2 />
-                            </button>
-                            <div className="flex items-center border border-gray-300 rounded ml-4">
+                                <div className="relative w-28 h-20 flex-shrink-0">
+                                    <Image
+                                        src={`${API_URL}/files/${item.images}`}
+                                        alt={item.name}
+                                        width={80}
+                                        height={80}
+                                        className="object-cover rounded"
+                                    />
+                                </div>
+                                <div className="flex-1 px-4">
+                                    <p className="text-gray-800">{item.name}</p>
+                                    <p className="mt-1 text-sm text-gray-600">
+                                        {fmt(item.price)} cada
+                                    </p>
+                                </div>
                                 <button
-                                    onClick={() => changeQty(item.id, -1)}
-                                    className="px-3 py-1 disabled:opacity-50"
-                                    disabled={item.quantity <= 1}
+                                    onClick={() => removeItem(item.id)}
+                                    className="p-2 text-gray-400 hover:text-red-600"
                                 >
-                                    <FiMinus />
+                                    <FiTrash2 />
                                 </button>
-                                <span className="px-4">{item.quantity}</span>
-                                <button
-                                    onClick={() => changeQty(item.id, +1)}
-                                    className="px-3 py-1"
-                                >
-                                    <FiPlus />
-                                </button>
+                                <div className="flex items-center border border-gray-300 rounded ml-4">
+                                    <button
+                                        onClick={() =>
+                                            updateItem(item.id, Math.max(1, item.quantity - 1))
+                                        }
+                                        disabled={item.quantity <= 1}
+                                        className="px-3 py-1 disabled:opacity-50 text-gray-500"
+                                    >
+                                        <FiMinus />
+                                    </button>
+                                    <span className="px-4 text-gray-600">{item.quantity}</span>
+                                    <button
+                                        onClick={() =>
+                                            updateItem(item.id, item.quantity + 1)
+                                        }
+                                        className="px-3 py-1 text-gray-500"
+                                    >
+                                        <FiPlus />
+                                    </button>
+                                </div>
+                                <div className="w-32 text-right px-4">
+                                    <p className="text-gray-800">
+                                        {fmt(item.price * item.quantity)}
+                                    </p>
+                                    <p className="text-xs text-gray-500">
+                                        12x de {fmt(item.price * item.quantity / 12)} sem juros
+                                    </p>
+                                </div>
                             </div>
-                            <div className="w-32 text-right px-4">
-                                <p className="text-gray-800">R$ {fmt(item.price * item.quantity)}</p>
-                                <p className="text-xs text-gray-500">
-                                    {Math.round(item.quantity * item.pricePerInstallment)}x de{" "}
-                                    {fmt(item.pricePerInstallment)} sem juros
-                                </p>
-                            </div>
-                        </div>
-                    ))}
+                        ))}
                 </section>
 
                 {/* Resumo à direita */}
@@ -196,7 +176,7 @@ export default function CartPage() {
                                 value={cep}
                                 onChange={(e) => setCep(e.target.value)}
                                 placeholder="00000-000"
-                                className="flex-1 border border-gray-300 rounded px-3 py-2"
+                                className="flex-1 border border-gray-300 rounded px-3 py-2 text-black"
                             />
                             <button
                                 onClick={calculateShipping}
@@ -225,13 +205,15 @@ export default function CartPage() {
                                             value={opt.id}
                                             checked={selectedShipping === opt.id}
                                             onChange={() => setSelectedShipping(opt.id)}
-                                            className="mr-2"
+                                            className="mr-2 text-black"
                                         />
                                         <span className="font-medium">{opt.name}</span>
                                     </label>
                                     <div className="text-right">
-                                        <p>R$ {fmt(opt.price)}</p>
-                                        <p className="text-xs text-gray-500">{opt.deliveryTime}</p>
+                                        <p>{fmt(opt.price)}</p>
+                                        <p className="text-xs text-gray-500">
+                                            {opt.deliveryTime}
+                                        </p>
                                     </div>
                                 </div>
                             ))}
@@ -249,38 +231,48 @@ export default function CartPage() {
                                 value={coupon}
                                 onChange={(e) => setCoupon(e.target.value)}
                                 placeholder="Código"
-                                className="flex-1 border border-gray-300 rounded px-3 py-2"
+                                className="flex-1 border border-gray-300 rounded px-3 py-2 text-black"
                             />
                             <button
                                 onClick={applyCoupon}
-                                className="border border-gray-800 hover:bg-gray-800 hover:text-white px-4 rounded"
+                                className="bg-gray-800 hover:bg-gray-900 text-white px-4 rounded"
                             >
                                 Calcular
                             </button>
                         </div>
+                        {discountValue > 0 && (
+                            <p className="text-green-600 text-sm">
+                                Desconto aplicado: {fmt(discountValue)}
+                            </p>
+                        )}
                     </div>
 
                     {/* Totalizadores */}
                     <div className="bg-white p-4 rounded shadow space-y-1">
                         <div className="flex justify-between">
-                            <span className="font-medium">Subtotal</span>
-                            <span>R$ {fmt(subtotal)}</span>
+                            <span className="font-medium text-black">Subtotal</span>
+                            <span className="text-black">{fmt(cart.subtotal)}</span>
                         </div>
                         {discountValue > 0 && (
                             <div className="flex justify-between text-green-600">
-                                <span className="font-medium">Desconto</span>
-                                <span>-R$ {fmt(discountValue)}</span>
+                                <span className="font-medium text-black">Desconto</span>
+                                <span className="text-black">-{fmt(discountValue)}</span>
                             </div>
                         )}
                         {selectedShipping && (
                             <div className="flex justify-between">
                                 <span className="font-medium">Frete</span>
-                                <span>R$ {fmt(shippingOptions.find(o => o.id === selectedShipping)!.price)}</span>
+                                <span className="text-black">
+                                    {fmt(
+                                        shippingOptions.find((o) => o.id === selectedShipping)!
+                                            .price
+                                    )}
+                                </span>
                             </div>
                         )}
                         <div className="border-t pt-2 flex justify-between font-bold">
-                            <span>Total</span>
-                            <span>R$ {fmt(total)}</span>
+                            <span className="text-black">Total</span>
+                            <span className="text-red-500">{fmt(total)}</span>
                         </div>
                         <p className="text-xs text-gray-500">
                             12x de {fmt(total / 12)} sem juros
@@ -289,10 +281,19 @@ export default function CartPage() {
 
                     {/* Botões finais */}
                     <div className="space-y-2">
-                        <button className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded font-semibold">
-                            Finalizar Compra
+                        <button
+                            onClick={() => clearCart()}
+                            className="w-full bg-gray-800 hover:bg-gray-900 text-white py-3 rounded font-semibold"
+                        >
+                            LIMPAR CARRINHO
                         </button>
-                        <Link href="/" className="block text-center text-gray-800 hover:underline">
+                        <button className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded font-semibold">
+                            FINALIZAR COMPRA
+                        </button>
+                        <Link
+                            href="/"
+                            className="block text-center text-gray-800 hover:underline"
+                        >
                             Continuar Comprando
                         </Link>
                     </div>

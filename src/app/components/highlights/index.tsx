@@ -17,7 +17,7 @@ import { toast } from "react-toastify";
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 // Componente para cada card de oferta
-function OfferCard({ product }: { product: ProductFormData }) {
+function HighlightsCard({ product }: { product: ProductFormData }) {
 
     const { colors } = useTheme();
     const { addItem } = useCart();
@@ -137,22 +137,22 @@ function OfferCard({ product }: { product: ProductFormData }) {
     );
 }
 
-export default function Offers() {
-    
+export default function Highlights() {
+
     const { colors } = useTheme();
-    const [offers, setOffers] = useState<ProductFormData[]>([]);
+    const [highlights, setHighlights] = useState<ProductFormData[]>([]);
 
     useEffect(() => {
         const apiClient = setupAPIClient();
-        async function fetchOffers() {
+        async function fetchHighlights() {
             try {
-                const { data } = await apiClient.get(`/products/offers`);
-                setOffers(data);
+                const { data } = await apiClient.get(`/products/highlights`);
+                setHighlights(data);
             } catch (error) {
                 console.error(error);
             }
         }
-        fetchOffers();
+        fetchHighlights();
     }, []);
 
     return (
@@ -161,7 +161,7 @@ export default function Offers() {
                 className="text-2xl font-bold mb-4"
                 style={{ color: colors?.titulo_posts_mais_vizualizados || "#000000" }}
             >
-                Ofertas
+                Destaques da loja
             </h2>
 
             <Swiper
@@ -176,9 +176,9 @@ export default function Offers() {
                 modules={[Navigation]}
                 className="swiper-container"
             >
-                {offers.map((product) => (
+                {highlights.map((product) => (
                     <SwiperSlide key={product.id}>
-                        <OfferCard product={product} />
+                        <HighlightsCard product={product} />
                     </SwiperSlide>
                 ))}
             </Swiper>
