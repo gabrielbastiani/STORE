@@ -4,6 +4,7 @@ import Highlights from "../highlights";
 import { Newsletter } from "../newsletter"; 
 import Offers from "../offers";
 import MarketingPopup from "../popups/marketingPopup"; 
+import RecentlyViewed from "../recentlyViewed";
 
 const HomePage = () => {
     return (
@@ -15,6 +16,7 @@ const HomePage = () => {
             <Offers />
             <Newsletter />
             <Highlights />
+            <RecentlyViewed />
         </div>
     );
 };
