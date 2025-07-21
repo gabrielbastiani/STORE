@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { setupAPIClient } from "@/services/api";
 import { ProductFormData } from "Types/types";
+import ViewCounter from "@/app/components/viewCounter";
 
 const STORAGE_KEY = "recently_viewed";
 
@@ -55,7 +56,9 @@ export default function ProductPage({
     return (
         <div className="container mx-auto px-4 py-8">
             <h1 className="text-2xl font-bold mb-4">{product.name}</h1>
-            {/* restante do seu layout de detalhe de produto */}
+            
+            <ViewCounter product_id={product.id || ""} />
+            
         </div>
     );
 }
