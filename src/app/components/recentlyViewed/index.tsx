@@ -15,8 +15,9 @@ import { useCart } from "@/app/contexts/CartContext";
 import { toast } from "react-toastify";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const STORAGE_KEY = "recently_viewed";
+const MAX_ITEMS = 10;
 
-// Componente para cada card de oferta
 function RecentlyViewedCard({ product }: { product: ProductFormData }) {
 
     const { colors } = useTheme();
@@ -24,36 +25,31 @@ function RecentlyViewedCard({ product }: { product: ProductFormData }) {
     const [quantity, setQuantity] = useState(1);
     const [adding, setAdding] = useState(false);
 
-    // verifica se há desconto
     const hasOffer = product.price_per < product.price_of;
-    // calcula % de desconto
     const discountPercentage = hasOffer
         ? Math.round((1 - product.price_per / product.price_of) * 100)
         : 0;
-    // escolhe imagem principal
     const primaryImage =
         product.images.find((img) => img.isPrimary) || product.images[0];
-    // formatador de moeda
-    const formatter = new Intl.NumberFormat("pt-BR", {
+
+    const fmt = new Intl.NumberFormat("pt-BR", {
         style: "currency",
         currency: "BRL",
-    });
-    const formattedPricePer = formatter.format(product.price_per);
-    const formattedPriceOf = formatter.format(product.price_of);
-    const formattedInstallment = formatter.format(product.price_per / 12);
+    }).format;
+    const formattedPricePer = fmt(product.price_per);
+    const formattedPriceOf = fmt(product.price_of);
+    const formattedInstallment = fmt(product.price_per / 12);
 
     function handleDecrease() {
         setQuantity((q) => Math.max(1, q - 1));
     }
-
     function handleIncrease() {
         setQuantity((q) => q + 1);
     }
-
     async function handleAddToCart() {
         try {
             setAdding(true);
-            await addItem(String(product?.id), quantity);
+            await addItem(String(product.id), quantity);
             toast.success(`${product.name} adicionado ao carrinho!`);
             setQuantity(1);
         } catch {
@@ -137,22 +133,40 @@ function RecentlyViewedCard({ product }: { product: ProductFormData }) {
     );
 }
 
-export default function Highlights() {
+export default function RecentlyViewed() {
 
     const { colors } = useTheme();
-    const [highlights, setHighlights] = useState<ProductFormData[]>([]);
+    const [products, setProducts] = useState<ProductFormData[]>([]);
 
     useEffect(() => {
-        const apiClient = setupAPIClient();
-        async function fetchHighlights() {
+        async function loadRecentlyViewed() {
+            const raw = localStorage.getItem(STORAGE_KEY) || "[]";
+            const ids: string[] = JSON.parse(raw)
+                .filter((v: any) => typeof v === "string")
+                .reverse()
+                .filter((id: any, i: any, arr: string | any[]) => arr.indexOf(id) === i)
+                .slice(0, MAX_ITEMS);
+
+            if (!ids.length) {
+                setProducts([]);
+                return;
+            }
+
+            const api = setupAPIClient();
             try {
-                const { data } = await apiClient.get(`/products/highlights`);
-                setHighlights(data);
-            } catch (error) {
-                console.error(error);
+                // Chamada única enviando o array de ids
+                const { data } = await api.post<ProductFormData[]>(
+                    "/product/recently/views",
+                    { id: ids }
+                );
+                setProducts(data);
+            } catch (err) {
+                console.error("Erro ao buscar visualizados recentemente", err);
+                setProducts([]);
             }
         }
-        fetchHighlights();
+
+        loadRecentlyViewed();
     }, []);
 
     return (
@@ -164,24 +178,30 @@ export default function Highlights() {
                 Visualizados recentemente
             </h2>
 
-            <Swiper
-                spaceBetween={16}
-                slidesPerView={1}
-                navigation
-                breakpoints={{
-                    640: { slidesPerView: 1 },
-                    768: { slidesPerView: 2 },
-                    1024: { slidesPerView: 4 },
-                }}
-                modules={[Navigation]}
-                className="swiper-container"
-            >
-                {highlights.map((product) => (
-                    <SwiperSlide key={product.id}>
-                        <RecentlyViewedCard product={product} />
-                    </SwiperSlide>
-                ))}
-            </Swiper>
+            {products.length === 0 ? (
+                <p className="text-center text-gray-500">
+                    Nenhum produto visualizado.
+                </p>
+            ) : (
+                <Swiper
+                    spaceBetween={16}
+                    slidesPerView={1}
+                    navigation
+                    breakpoints={{
+                        640: { slidesPerView: 1 },
+                        768: { slidesPerView: 2 },
+                        1024: { slidesPerView: 4 },
+                    }}
+                    modules={[Navigation]}
+                    className="swiper-container"
+                >
+                    {products.map((product) => (
+                        <SwiperSlide key={product.id}>
+                            <RecentlyViewedCard product={product} />
+                        </SwiperSlide>
+                    ))}
+                </Swiper>
+            )}
         </div>
     );
 }

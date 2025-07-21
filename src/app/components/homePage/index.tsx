@@ -1,6 +1,8 @@
 "use client"
 
+import CategoriesGrid from "../categoriesGrid";
 import Highlights from "../highlights";
+import { MosaicSlider } from "../mosaicSlider";
 import { Newsletter } from "../newsletter"; 
 import Offers from "../offers";
 import MarketingPopup from "../popups/marketingPopup"; 
@@ -15,6 +17,8 @@ const HomePage = () => {
             />
             <Offers />
             <Newsletter />
+            <CategoriesGrid />
+            <MosaicSlider />
             <Highlights />
             <RecentlyViewed />
         </div>
