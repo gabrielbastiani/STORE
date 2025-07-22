@@ -1,17 +1,13 @@
-'use client'
-
-import React, { useEffect, useState, useMemo } from 'react'
+import React, { useMemo } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-
-// Swiper
 import { Swiper, SwiperSlide } from 'swiper/react'
 import { Navigation, Pagination, Autoplay } from 'swiper/modules'
 import 'swiper/css'
 import 'swiper/css/navigation'
 import 'swiper/css/pagination'
 
-export interface PublicationProps {
+interface PublicationProps {
     id: string
     title: string
     description: string
@@ -22,50 +18,29 @@ export interface PublicationProps {
     text_publication: string
 }
 
-export const MosaicSlider: React.FC = () => {
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || ''
-    const [items, setItems] = useState<PublicationProps[]>([])
-    const [error, setError] = useState<string | null>(null)
+interface MosaicProps {
+    existingMosaic: PublicationProps[];
+}
 
-    // monta o endpoint corretamente
-    const endpoint = API_URL
-        ? `${API_URL}/marketing_publication/existing_mosaic?local=Pagina_inicial`
-        : `/api/marketing_publication/existing_mosaic?local=Pagina_inicial`
-
-    // 1) busca dados uma única vez
-    useEffect(() => {
-        fetch(endpoint)
-            .then((r) => {
-                if (!r.ok) throw new Error(`Status ${r.status}`)
-                return r.json() as Promise<PublicationProps[]>
-            })
-            .then(setItems)
-            .catch((err) => {
-                console.error(err)
-                setError('Não foi possível carregar o mosaico.')
-            })
-    }, [endpoint])
-
+export default function MosaicSlider({ existingMosaic }: MosaicProps) {
     // 2) agrupa *todos* os itens, mesmo que o último seja menor que 4
     const slides = useMemo(() => {
         const out: PublicationProps[][] = []
-        for (let i = 0; i < items.length; i += 4) {
-            out.push(items.slice(i, i + 4))
+        for (let i = 0; i < existingMosaic.length; i += 4) {
+            out.push(existingMosaic.slice(i, i + 4))
         }
         return out
-    }, [items])
+    }, [existingMosaic])
 
-    if (error) {
-        return <div className="text-red-600 text-center py-8">{error}</div>
-    }
+
     if (!slides.length) return null
 
     // 3) layouts configuráveis para slides de exatamente 4 itens
     const layoutConfigs: Record<number, string[]> = {
         // Slide 0: 75% / 25% (grid-cols-4 grid-rows-2)
-        0: ['col-span-3', 'col-span-1', 'col-span-3', 'col-span-1'],
+        0: ['col-span-3', 'col-span-1', 'col-span-2', 'col-span-2'],
         // Slide 1: 2×2 igualitário (grid-cols-2 grid-rows-2)
-        1: ['col-span-1', 'col-span-1', 'col-span-1', 'col-span-1'],
+        1: ['col-span-1', 'col-span-1', 'col-span-3', 'col-span-2'],
         // Slide 2: full + 3 colunas (grid-cols-4)
         2: ['col-span-4', 'col-span-1', 'col-span-1', 'col-span-1'],
         // (você pode adicionar mais índices se quiser mais variações)

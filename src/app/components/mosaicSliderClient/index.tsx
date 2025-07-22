@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { setupAPIClient } from "@/services/api"; 
-import { MosaicSlider } from "./mosaicSlider";
+import MosaicSlider from "./mosaicSlider";
+
 
 
 interface ClientMosaic {

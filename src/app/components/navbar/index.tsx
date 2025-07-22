@@ -703,7 +703,7 @@ export function Navbar() {
                                 searchResults.length === 0 && (
                                     <div className="mb-4">
                                         <div className="flex justify-between items-center mb-2">
-                                            <span className="font-medium">Histórico de buscas</span>
+                                            <span className="font-medium text-gray-600">Histórico de buscas</span>
                                             <button
                                                 onClick={clearHistory}
                                                 className="text-sm text-red-500"
@@ -715,7 +715,7 @@ export function Navbar() {
                                             {history.map((h) => (
                                                 <div
                                                     key={h}
-                                                    className="px-4 py-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer"
+                                                    className="px-4 py-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer text-gray-500"
                                                     onClick={() => submitSearch(h)}
                                                 >
                                                     {h}

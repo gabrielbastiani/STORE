@@ -3,7 +3,6 @@
 import CategoriesGrid from "../categoriesGrid";
 import Highlights from "../highlights";
 import { MosaicSliderClient } from "../mosaicSliderClient";
-import MosaicSlider from "../mosaicSliderClient/mosaicSlider";
 import { Newsletter } from "../newsletter"; 
 import Offers from "../offers";
 import MarketingPopup from "../popups/marketingPopup"; 
