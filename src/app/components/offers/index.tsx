@@ -91,54 +91,62 @@ function OfferCard({ product }: { product: ProductFormData }) {
                 </h3>
             </Link>
 
-            <div className="mt-auto">
-                <div className="flex items-baseline">
-                    <span className="text-xl font-bold text-red-600">
-                        {formattedPricePer}
-                    </span>
-                    {hasOffer && (
-                        <span className="text-sm text-gray-500 line-through ml-2">
-                            {formattedPriceOf}
-                        </span>
-                    )}
+            {product?.stock === 0 ?
+                <div
+                    className="flex items-center justify-center flex-1 bg-white disabled:opacity-50 text-red-600 font-semibold rounded transition"
+                >
+                    Produto Indisponivel
                 </div>
-                <p className="text-xs text-gray-600 mb-4">
-                    12x de {formattedInstallment} sem juros no cartão
-                </p>
+                :
+                <div className="mt-auto">
+                    <div className="flex items-baseline">
+                        <span className="text-xl font-bold text-red-600">
+                            {formattedPricePer}
+                        </span>
+                        {hasOffer && (
+                            <span className="text-sm text-gray-500 line-through ml-2">
+                                {formattedPriceOf}
+                            </span>
+                        )}
+                    </div>
+                    <p className="text-xs text-gray-600 mb-4">
+                        12x de {formattedInstallment} sem juros no cartão
+                    </p>
 
-                <div className="flex items-center">
-                    <div className="flex items-center border rounded border-gray-400">
+                    <div className="flex items-center">
+                        <div className="flex items-center border rounded border-gray-400">
+                            <button
+                                onClick={handleDecrease}
+                                disabled={quantity <= 1}
+                                className="px-2 py-1 disabled:opacity-50 text-gray-400"
+                            >
+                                –
+                            </button>
+                            <span className="px-4 text-gray-500">{quantity}</span>
+                            <button
+                                onClick={handleIncrease}
+                                className="px-2 py-1 text-gray-400"
+                            >
+                                +
+                            </button>
+                        </div>
                         <button
-                            onClick={handleDecrease}
-                            disabled={quantity <= 1}
-                            className="px-2 py-1 disabled:opacity-50 text-gray-400"
+                            onClick={handleAddToCart}
+                            disabled={adding}
+                            className="ml-2 flex items-center justify-center flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-semibold py-2 rounded transition"
                         >
-                            –
-                        </button>
-                        <span className="px-4 text-gray-500">{quantity}</span>
-                        <button
-                            onClick={handleIncrease}
-                            className="px-2 py-1 text-gray-400"
-                        >
-                            +
+                            <FiShoppingCart className="mr-2 text-lg" />
+                            {adding ? "Adicionando…" : "Adicionar"}
                         </button>
                     </div>
-                    <button
-                        onClick={handleAddToCart}
-                        disabled={adding}
-                        className="ml-2 flex items-center justify-center flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-semibold py-2 rounded transition"
-                    >
-                        <FiShoppingCart className="mr-2 text-lg" />
-                        {adding ? "Adicionando…" : "Adicionar"}
-                    </button>
                 </div>
-            </div>
+            }
         </div>
     );
 }
 
 export default function Offers() {
-    
+
     const { colors } = useTheme();
     const [offers, setOffers] = useState<ProductFormData[]>([]);
 

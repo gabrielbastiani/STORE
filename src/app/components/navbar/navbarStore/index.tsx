@@ -1,4 +1,4 @@
-"use client";
+"use client"
 
 import { setupAPIClient } from "@/services/api";
 import { AuthContextStore } from "@/app/contexts/AuthContextStore";
@@ -28,7 +28,7 @@ import {
 } from "react";
 import debounce from "lodash.debounce";
 import { toast } from "react-toastify";
-import noImage from "../../../../public/no-image.png";
+import noImage from "../../../../../public/no-image.png";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL!;
 const HISTORY_KEY = "@store:searchHistory";
@@ -54,7 +54,7 @@ type Store = {
     price_per: number;
 };
 
-export function Navbar() {
+export function NavbarStore() {
 
     const router = useRouter();
 

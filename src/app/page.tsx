@@ -1,7 +1,7 @@
 import noImage from '../../public/no-image.png';
 import StoreLayout from './components/layouts/storeLayout'; 
-import { Footer } from './components/footer'; 
-import { Navbar } from './components/navbar'; 
+import { FooterStore } from './components/footer/footerStore';  
+import { NavbarStore } from './components/navbar/navbarStore'; 
 import HomePage from './components/homePage'; 
 import { setupAPIClient } from "../services/api";
 import { Metadata, ResolvingMetadata } from "next";
@@ -101,9 +101,9 @@ export default async function Home_page() {
 
   return (
     <StoreLayout
-      navbar={<Navbar />}
+      navbar={<NavbarStore />}
       bannersSlide={<SlideBannerClient position="SLIDER" local='Pagina_inicial' local_site='Pagina_inicial' />}
-      footer={<Footer />}
+      footer={<FooterStore />}
       local='Pagina_inicial'
       sidebar_publication={<PublicationSidebarClient local='Pagina_inicial' />}
     >

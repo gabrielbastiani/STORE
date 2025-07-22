@@ -6,10 +6,10 @@ import Link from "next/link"
 import { useTheme } from "@/app/contexts/ThemeContext"
 import { AuthContextStore } from "@/app/contexts/AuthContextStore"
 import { setupAPIClient } from "@/services/api"
-import formasPagamento from "../../../../public/formas-de-pagamento.png"
-import segurancaUm from "../../../../public/Google_Loja_Segura.svg"
-import segurancaDois from "../../../../public/100_https.svg"
-import SafeHTML from "../SafeHTML"
+import formasPagamento from "../../../../../public/formas-de-pagamento.png"
+import segurancaUm from "../../../../../public/Google_Loja_Segura.svg"
+import segurancaDois from "../../../../../public/100_https.svg"
+import SafeHTML from "../../SafeHTML"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL
 
@@ -20,7 +20,7 @@ interface MediasProps {
     logo_media: string
 }
 
-export const Footer: React.FC = () => {
+export const FooterStore: React.FC = () => {
 
     const { colors } = useTheme()
 
@@ -175,18 +175,22 @@ export const Footer: React.FC = () => {
                     </div>
 
                     {/* Assistência Técnica */}
-                    <div>
-                        <h4 className="font-bold mb-2 underline">Assistência Técnica</h4>
-                        <p className="text-sm leading-relaxed">
-                            Para melhor atender nossos clientes, fale diretamente conosco para orientar você.{" "}
-                            <Link
-                                href="/assistencia-tecnica"
-                                className="underline font-medium"
-                            >
-                                Entre em contato.
-                            </Link>
-                        </p>
-                    </div>
+                    {configs?.technical_assistance ?
+                        <div>
+                            <h4 className="font-bold mb-2 underline">Assistência Técnica</h4>
+                            <p className="text-sm leading-relaxed">
+                                Para melhor atender nossos clientes, fale diretamente conosco para orientar você.{" "}
+                                <Link
+                                    href="/assistencia-tecnica"
+                                    className="underline font-medium"
+                                >
+                                    Entre em contato.
+                                </Link>
+                            </p>
+                        </div>
+                        :
+                        null
+                    }
 
                     {/* Empresa */}
                     <div>
