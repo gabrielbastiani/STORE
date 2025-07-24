@@ -17,14 +17,25 @@ type AuthContextData = {
 
 type UserProps = {
     id: string;
-    name: string;
+    asaas_customer_id?: string;
     email: string;
+    password?: string;
+    name: string;
+    phone?: string;
+    type_user?: string;
+    cpf?: string;
+    cnpj?: string;
+    date_of_birth?: string;
+    sexo?: string;
+    state_registration?: string;
     photo?: string;
+    newsletter?: boolean;
 }
 
 type SignInProps = {
     email: string;
     password: string;
+
 }
 
 type AuthProviderProps = {
@@ -34,6 +45,8 @@ type AuthProviderProps = {
 interface ConfigProps {
     name?: string;
     email?: string;
+    cnpj?: string;
+    cpf?: string;
     phone?: string;
     whatsapp?: string;
     street?: string;
@@ -57,10 +70,20 @@ interface ConfigProps {
 
 interface SessionResponse {
     id: string;
+    asaas_customer_id?: string;
     token: string;
+    password?: string;
     name: string;
     email: string;
-    photo: string;
+    type_user?: string;
+    phone?: string;
+    cpf?: string;
+    cnpj?: string;
+    date_of_birth?: string;
+    sexo?: string;
+    state_registration?: string;
+    photo?: string;
+    newsletter?: boolean;
 }
 
 export const AuthContextStore = createContext({} as AuthContextData);
@@ -70,6 +93,8 @@ export function AuthProviderStore({ children }: AuthProviderProps) {
     const [configs, setConfigs] = useState<ConfigProps>({
         name: "",
         email: "",
+        cnpj: "",
+        cpf: "",
         phone: "",
         whatsapp: "",
         street: "",
@@ -90,8 +115,8 @@ export function AuthProviderStore({ children }: AuthProviderProps) {
         payment_methods: "",
         technical_assistance: ""
     });
-    const [cookies, setCookie, removeCookie] = useCookies(['@store.token']);
-    const [cookiesId, setCookieId, removeCookieId] = useCookies(['@idUserStore']);
+    const [cookies, setCookie, removeCookie] = useCookies(['storeToken']);
+    const [cookiesId, setCookieId, removeCookieId] = useCookies(['idCustomerStore']);
     const [user, setUser] = useState<UserProps>();
     const [loadingAuth, setLoadingAuth] = useState<boolean>(true);
     const isAuthenticated = !!user;
@@ -103,6 +128,8 @@ export function AuthProviderStore({ children }: AuthProviderProps) {
 
                 if (response.status === 200) {
                     const defaultConfigs: ConfigProps = {
+                        cnpj: "",
+                        cpf: "",
                         name: "Loja Padrão",
                         logo: "../../../public/no-image.png",
                         email: "contato@loja.com",
@@ -132,6 +159,8 @@ export function AuthProviderStore({ children }: AuthProviderProps) {
                 if (error.response?.status === 404) {
                     console.warn("Endpoint não encontrado. Usando configurações padrão.");
                     setConfigs({
+                        cnpj: "",
+                        cpf: "",
                         name: "Loja Padrão",
                         logo: "../../../public/no-image.png",
                         email: "contato@loja.com",
@@ -175,13 +204,29 @@ export function AuthProviderStore({ children }: AuthProviderProps) {
                 sameSite: 'lax' as const
             };
 
-            setCookie('@store.token', token, cookieOptions);
-            setCookieId('@idUserStore', id, cookieOptions);
+            setCookie('storeToken', token, cookieOptions);
+            setCookieId('idCustomerStore', id, cookieOptions);
 
             api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
             toast.success('Logado com sucesso!');
-            setUser({ id, name: response.data.name, email });
+            setUser(
+                {
+                    id,
+                    name: response.data.name,
+                    email,
+                    phone: response.data.phone,
+                    type_user: response.data.type_user,
+                    cpf: response.data.cpf,
+                    cnpj: response.data.cnpj,
+                    date_of_birth: response.data.date_of_birth,
+                    sexo: response.data.sexo,
+                    state_registration: response.data.state_registration,
+                    photo: response.data.photo,
+                    newsletter: response.data.newsletter,
+                    asaas_customer_id: response.data.asaas_customer_id
+                }
+            );
             return true;
         } catch (err: any) {
             toast.error("Erro ao acessar");
@@ -203,21 +248,46 @@ export function AuthProviderStore({ children }: AuthProviderProps) {
     };
 
     useEffect(() => {
-        let token = cookies['@store.token'];
-        let userid = cookiesId['@idUserStore'];
+        let token = cookies['storeToken'];
+        let customerId = cookiesId['idCustomerStore'];
 
         async function loadUserData() {
             if (token) {
                 try {
-                    const response = await api.get<SessionResponse>(`/user/customer/me?user_id=${userid}`);
+                    const response = await api.get<SessionResponse>(`/user/customer/me?customer_id=${customerId}`);
 
-                    const { id, name, email, photo } = response.data;
+                    const {
+                        id,
+                        asaas_customer_id,
+                        email,
+                        password,
+                        name,
+                        phone,
+                        type_user,
+                        cpf,
+                        cnpj,
+                        date_of_birth,
+                        sexo,
+                        state_registration,
+                        photo,
+                        newsletter
+                    } = response.data;
 
                     setUser({
                         id,
-                        name,
+                        asaas_customer_id,
                         email,
-                        photo
+                        password,
+                        name,
+                        phone,
+                        type_user,
+                        cpf,
+                        cnpj,
+                        date_of_birth,
+                        sexo,
+                        state_registration,
+                        photo,
+                        newsletter
                     });
 
                 } catch (error) {
@@ -233,8 +303,8 @@ export function AuthProviderStore({ children }: AuthProviderProps) {
 
     function signOut() {
         try {
-            removeCookie('@store.token', { path: '/' });
-            removeCookieId('@idUserStore', { path: '/' });
+            removeCookie('storeToken', { path: '/' });
+            removeCookieId('idCustomerStore', { path: '/' });
             setUser(undefined);
             toast.success('Usuário deslogado com sucesso!');
             setTimeout(() => {

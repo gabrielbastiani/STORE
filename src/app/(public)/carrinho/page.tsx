@@ -2,15 +2,13 @@
 
 import { useTheme } from "@/app/contexts/ThemeContext";
 import { useCart } from "@/app/contexts/CartContext";
-import { AuthContextStore } from "@/app/contexts/AuthContextStore";
-import { useContext, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
     FiTrash2,
     FiPlus,
-    FiMinus,
-    FiChevronLeft,
+    FiMinus
 } from "react-icons/fi";
 import { FooterCheckout } from "@/app/components/footer/footerCheckout";
 import { NavbarCheckout } from "@/app/components/navbar/navbarCheckout";
@@ -27,7 +25,7 @@ interface ShippingOption {
 export default function CartPage() {
 
     const { colors } = useTheme();
-    const { configs } = useContext(AuthContextStore);
+    
     // Contexto do carrinho
     const {
         cart,            // { id, items: CartItem[], subtotal, shippingCost, total }

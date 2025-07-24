@@ -64,7 +64,7 @@ export const FooterCheckout: React.FC = () => {
                         © {currentYear} {configs?.name ? configs?.name : "Loja"}. Todos os direitos
                     </div>
                     <div>
-                        CNPJ: 92.236.629/0001‑53 ‑ {configs?.street}, {configs?.number} ‑ {configs?.neighborhood} ‑ {configs?.city} ‑ CEP: {configs?.zipCode}.
+                        {configs?.cnpj ? `CNPJ: ${configs?.cnpj}` : ""} ‑ {configs?.street}, {configs?.number} ‑ {configs?.neighborhood} ‑ {configs?.city} ‑ CEP: {configs?.zipCode}.
                     </div>
                 </div>
 

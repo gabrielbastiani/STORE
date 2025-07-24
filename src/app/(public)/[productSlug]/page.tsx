@@ -8,11 +8,8 @@ import ViewCounter from "@/app/components/viewCounter";
 
 const STORAGE_KEY = "recently_viewed";
 
-export default function ProductPage({
-    params,
-}: {
-    params: { productSlug: string };
-}) {
+export default function ProductPage({ params }: { params: { productSlug: string }}) {
+    
     const router = useRouter();
     const [product, setProduct] = useState<ProductFormData | null>(null);
     const [loading, setLoading] = useState(true);
