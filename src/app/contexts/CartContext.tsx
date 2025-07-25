@@ -15,7 +15,7 @@ import {
   apiClearCart,
 } from "@/services/cart";
 import axios from "axios";
-import { Cart, CartItem } from "Types/types"; 
+import { Cart, CartItem } from "Types/types";
 
 interface CartContextValue {
   cart: Cart;
@@ -113,6 +113,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
             name: string;
             images: any;
             price_per: number;
+            weight: number;
+            length: number;
+            width: number;
+            height: number;
           }>(`/product/unique/data?product_id=${productId}`);
           items = [
             ...cart.items,
@@ -123,6 +127,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
               images: prod.images[0].url,
               price: prod.price_per,
               quantity,
+              weight: prod.weight,
+              length: prod.length,
+              width: prod.width,
+              height: prod.height
             },
           ];
         }
