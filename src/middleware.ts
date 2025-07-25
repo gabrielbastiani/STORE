@@ -10,6 +10,10 @@ const PUBLIC_PATHS = [
     '/cadastro',
     '/login',
     '/not-found',
+    '/recover_password_customer',
+    '/produto',
+    '/busca',
+    '/carrinho'
     // se você tiver mais rotas públicas, adicione aqui
 ]
 

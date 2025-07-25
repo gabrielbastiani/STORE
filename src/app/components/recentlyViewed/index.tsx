@@ -70,7 +70,7 @@ function RecentlyViewedCard({ product }: { product: ProductFormData }) {
                 </div>
             )}
 
-            <Link href={`${product.slug}`} className="block">
+            <Link href={`/produto/${product.slug}`} className="block">
                 <Image
                     src={`${API_URL}/files/${primaryImage.url}`}
                     alt={product.name}

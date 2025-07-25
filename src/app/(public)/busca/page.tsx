@@ -52,7 +52,7 @@ export default function SearchPage() {
             <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 {products.map((p) => (
                     <li key={p.id} className="border p-4 rounded">
-                        <Link href={`/product/${p.slug}`} className="block">
+                        <Link href={`/produto/${p.slug}`} className="block">
                             <Image
                                 src={p.images[0]?.url ? `${process.env.NEXT_PUBLIC_API_URL}/files/${p.images[0].url}` : noImage}
                                 alt={p.name}

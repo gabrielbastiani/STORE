@@ -139,7 +139,7 @@ export function NavbarStore() {
                 const res = await api.get<{
                     data: Store[];
                     meta: any;
-                }>("/products/search", {
+                }>("/products/busca", {
                     params: { q: term, page: 1, perPage: 5 },
                 });
                 setSearchResults(res.data.data || []);
@@ -494,13 +494,14 @@ export function NavbarStore() {
                     {!loadingAuth &&
                         (isAuthenticated ? (
                             <div
-                                className="text-white cursor-pointer"
+                                className="text-white cursor-pointer flex items-center"
                                 onClick={() => {
                                     router.push(`/meus-dados`);
                                     setIsMobileMenuOpen(false);
                                     setOpenSubmenus({});
                                 }}
                             >
+                                <span className="text-sm">{user?.name}</span>&nbsp;&nbsp;
                                 {user?.photo ? (
                                     <Image
                                         src={`${API_URL}/files/${user.photo}`}
@@ -727,7 +728,7 @@ export function NavbarStore() {
 
                             {searchResults.length > 0 && (
                                 <div className="mb-4">
-                                    <h4 className="font-medium mb-2">Resultados</h4>
+                                    <h4 className="font-medium mb-2 text-gray-600">Resultados</h4>
                                     <div className="space-y-2">
                                         {searchResults.map((prod) => (
                                             <div

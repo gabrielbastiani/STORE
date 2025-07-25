@@ -122,7 +122,7 @@ export const FooterStore: React.FC = () => {
                         <h4 className="font-bold mb-2 underline">Minha Conta</h4>
                         <ul className="space-y-1 text-sm">
                             <li>
-                                <Link href="/meus-pedidos" className="hover:underline">
+                                <Link href="/meus-dados" className="hover:underline">
                                     Meus pedidos
                                 </Link>
                             </li>
