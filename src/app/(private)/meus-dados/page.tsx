@@ -1,4 +1,4 @@
-"use client";
+"use client"
 
 import { useState } from "react";
 import { useContext } from "react";
@@ -7,6 +7,8 @@ import { MenuKey, Sidebar } from "@/app/components/paginaCliente/sidebar";
 import { NavbarCheckout } from "@/app/components/navbar/navbarCheckout";
 import { FooterCheckout } from "@/app/components/footer/footerCheckout";
 import { MeusDados } from "@/app/components/paginaCliente/meusDados";
+import AddressList from "@/app/components/paginaCliente/addressList";
+import { OrdersList } from "@/app/components/paginaCliente/ordersList";
 
 export default function MinhaContaPage() {
 
@@ -38,26 +40,18 @@ export default function MinhaContaPage() {
                 <Sidebar active={active} onSelect={setActive} />
 
                 {/* Conteúdo à direita */}
-                <main className="flex-1 p-8 overflow-auto">
+                <main className="flex-1 p-4 md:p-8">
                     <h1 className="text-2xl font-bold mb-6 text-black">
                         {active === "dados" ? `Meus Dados`
                             : active === "pedidos" ? `Meus Pedidos`
-                                : active === "creditos" ? `Meus Créditos`
-                                    : active === "digitais" ? `Meus Produtos Digitais`
-                                        : active === "enderecos" ? `Meus Endereços`
-                                            : active === "alterar-email" ? `Alterar E‑mail`
-                                                : active === "alterar-senha" ? `Alterar Senha`
-                                                    : active === "sair" ? `Saindo…`
-                                                        : ""}
+                                : active === "enderecos" ? `Meus Endereços`
+                                    : active === "sair" ? `Saindo…`
+                                        : ""}
                     </h1>
 
                     {active === "dados" && <MeusDados />}
-                    {/* {active === "pedidos"     && <OrdersList userId={user.id} />}
-          {active === "creditos"    && <CreditsList credits={user.credits} />}
-          {active === "digitais"    && <DigitalProductsList products={user.digitalProducts} />}
-          {active === "enderecos"   && <AddressesList addresses={user.addresses} />}
-          {active === "alterar-email"  && <ChangeEmail currentEmail={user.email} />}
-          {active === "alterar-senha"  && <ChangePassword />} */}
+                    {active === "pedidos" && <OrdersList />}
+                    {active === "enderecos" && <AddressList />}
                     {active === "sair" && (
                         <div>
                             {/** dispara o logout via contexto */}

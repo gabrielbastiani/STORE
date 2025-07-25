@@ -1,3 +1,4 @@
+// app/components/paginaCliente/MeusDados.tsx
 "use client";
 
 import {
@@ -11,6 +12,7 @@ import { AuthContextStore } from "@/app/contexts/AuthContextStore";
 import { api } from "@/services/apiClient";
 import { toast } from "react-toastify";
 import { FaRegTrashAlt } from "react-icons/fa";
+import Image from "next/image";
 
 type Sexo = "M" | "F" | "O";
 type TypeUser = "FISICA" | "JURIDICA";
@@ -21,7 +23,7 @@ export const MeusDados: React.FC = () => {
   const { user, updateUser } = useContext(AuthContextStore);
   if (!user) return null;
 
-  // ——— Máscaras CPF / CNPJ ———
+  // Máscaras
   const maskCpf = (v: string) => {
     const d = v.replace(/\D/g, "").slice(0, 11);
     return d
@@ -38,7 +40,7 @@ export const MeusDados: React.FC = () => {
       .replace(/(\d{4})(\d)/, "$1-$2");
   };
 
-  // ——— Estado inicial ———
+  // Estados iniciais
   const [typeUser, setTypeUser] = useState<TypeUser>(
     (user.type_user as TypeUser) || "FISICA"
   );
@@ -47,7 +49,7 @@ export const MeusDados: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [newsletter, setNewsletter] = useState(!!user.newsletter);
 
-  // — Telefone —  
+  // Telefone
   const rawPhone = user.phone ?? "";
   const digits = rawPhone.replace(/\D/g, "");
   const initDdd = digits.slice(0, 2);
@@ -55,13 +57,13 @@ export const MeusDados: React.FC = () => {
   const [ddd, setDdd] = useState(initDdd);
   const [phone, setPhone] = useState(initPhone);
 
-  // — Pessoa Física —  
+  // Pessoa Física
   const [cpf, setCpf] = useState(user.cpf ?? "");
   const [nameFisica, setNameFisica] = useState(user.name);
   const [dateOfBirth, setDateOfBirth] = useState(user.date_of_birth ?? "");
   const [sexo, setSexo] = useState<Sexo>((user.sexo as Sexo) ?? "O");
 
-  // — Pessoa Jurídica —  
+  // Pessoa Jurídica
   const [cnpj, setCnpj] = useState(user.cnpj ?? "");
   const [razaoSocial, setRazaoSocial] = useState(user.name);
   const [stateRegistration, setStateRegistration] = useState(
@@ -71,7 +73,7 @@ export const MeusDados: React.FC = () => {
     !user.state_registration || user.state_registration === ""
   );
 
-  // — Preview da foto —  
+  // Preview de foto
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string>(
     user.photo ? `${API_URL}/${user.photo}` : ""
@@ -82,7 +84,7 @@ export const MeusDados: React.FC = () => {
     if (f) setPreview(URL.createObjectURL(f));
   };
 
-  // — Reseta o form quando o contexto user muda —  
+  // Reseta form quando user muda (sem tocar isentoIE)
   useEffect(() => {
     setTypeUser((user.type_user as TypeUser) || "FISICA");
     setEmail(user.email);
@@ -98,7 +100,7 @@ export const MeusDados: React.FC = () => {
     setCnpj(user.cnpj ?? "");
     setRazaoSocial(user.name);
     setStateRegistration(user.state_registration ?? "");
-    setIsentoIE(!user.state_registration || user.state_registration === "");
+    // isentoIE se mantém
 
     setPassword("");
     setConfirmPassword("");
@@ -107,29 +109,31 @@ export const MeusDados: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // — Limpa só a UI quando marcar isento —  
   const toggleIsento = (checked: boolean) => {
     setIsentoIE(checked);
-    if (checked) {
-      setStateRegistration("");
-    }
+    if (checked) setStateRegistration("");
   };
 
-  // — Envio do formulário —  
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+
+    if (
+      typeUser === "JURIDICA" &&
+      !isentoIE &&
+      stateRegistration.trim() === ""
+    ) {
+      toast.error(
+        "Inscrição Estadual é obrigatória ou marque 'I.E. Isento'."
+      );
+      return;
+    }
     if (password && password !== confirmPassword) {
       toast.error("As senhas não coincidem");
       return;
     }
 
     try {
-      // Se marcou isento OU apagou tudo manualmente, considere limpar
-      const shouldClearIE =
-        isentoIE || (stateRegistration.trim() === "");
-
       const formData = new FormData();
-
       formData.append("customer_id", user.id);
       formData.append("email", email);
       if (password) formData.append("password", password);
@@ -142,12 +146,10 @@ export const MeusDados: React.FC = () => {
         formData.append("name", nameFisica);
         formData.append("date_of_birth", dateOfBirth);
         formData.append("sexo", sexo);
-      }
-
-      if (typeUser === "JURIDICA") {
+      } else {
         formData.append("cnpj", cnpj.replace(/\D/g, ""));
         formData.append("name", razaoSocial);
-        formData.append("state_registration", stateRegistration);
+        formData.append("state_registration", isentoIE ? "" : stateRegistration);
       }
 
       if (photoFile) formData.append("file", photoFile);
@@ -157,9 +159,6 @@ export const MeusDados: React.FC = () => {
       });
 
       const updated = resp.data;
-      // Garantir que o contexto receba o valor correto
-      const finalStateRegistration = shouldClearIE ? "" : stateRegistration;
-
       updateUser({
         email: updated.email,
         name: updated.name,
@@ -169,7 +168,7 @@ export const MeusDados: React.FC = () => {
         cnpj: updated.cnpj,
         date_of_birth: updated.date_of_birth,
         sexo: updated.sexo,
-        state_registration: finalStateRegistration,
+        state_registration: isentoIE ? "" : updated.state_registration,
         newsletter: updated.newsletter,
         photo: updated.photo,
       });
@@ -181,48 +180,50 @@ export const MeusDados: React.FC = () => {
     }
   };
 
-  async function deletePhotoCustomer() {
-    try {
-      await api.put(`/user/customer/delete_photo?customer_id=${user?.id}`)
-      toast.success("Foto deletada com sucesso")
-    } catch (error) {
-      console.log(error)
-    }
-  }
-
   return (
     <form
       onSubmit={handleSubmit}
-      className="space-y-6 bg-white p-6 rounded shadow text-black"
+      className="bg-white p-4 md:p-6 rounded shadow text-black space-y-6 mx-auto"
     >
       {/* Foto + preview */}
-      <div className="flex items-center space-x-4">
+      <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
         {preview && (
-          <img
+          <Image
             src={preview}
             alt="Preview"
+            width={80}
+            height={80}
             className="h-24 w-24 object-cover rounded-full border"
           />
         )}
-        <div>
+        <div className="flex flex-col items-start gap-2">
           <label className="block text-sm font-medium">Foto de Perfil</label>
           <input
             type="file"
             accept="image/*"
             onChange={handlePhotoChange}
-            className="mt-1"
+            className="block"
           />
-          <FaRegTrashAlt
-            size={20}
-            color="red"
-            className="mt-4 cursor-pointer"
-            onClick={deletePhotoCustomer}
-          />
+          {preview && (
+            <FaRegTrashAlt
+              size={20}
+              color="red"
+              className="cursor-pointer mt-2"
+              onClick={async () => {
+                await api.put(
+                  `/user/customer/delete_photo?customer_id=${user.id}`
+                );
+                toast.success("Foto deletada");
+                setPreview("");
+                updateUser({ photo: "" });
+              }}
+            />
+          )}
         </div>
       </div>
 
-      {/* E‑mail e CPF/CNPJ */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* E‑mail & CPF/CNPJ */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
           <label className="block text-sm font-medium">E‑mail *</label>
           <input
@@ -230,8 +231,7 @@ export const MeusDados: React.FC = () => {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            className="mt-1 block w-full border rounded p-2"
-            placeholder="E‑mail"
+            className="mt-1 w-full border rounded p-2"
           />
         </div>
         {typeUser === "FISICA" ? (
@@ -242,8 +242,8 @@ export const MeusDados: React.FC = () => {
               value={cpf}
               onChange={(e) => setCpf(maskCpf(e.target.value))}
               required
-              className="mt-1 block w-full border rounded p-2"
               placeholder="000.000.000-00"
+              className="mt-1 w-full border rounded p-2"
             />
           </div>
         ) : (
@@ -254,16 +254,16 @@ export const MeusDados: React.FC = () => {
               value={cnpj}
               onChange={(e) => setCnpj(maskCnpj(e.target.value))}
               required
-              className="mt-1 block w-full border rounded p-2"
               placeholder="00.000.000/0000-00"
+              className="mt-1 w-full border rounded p-2"
             />
           </div>
         )}
       </div>
 
-      {/* Campos específicos */}
-      {typeUser === "FISICA" ? (
-        <>
+      {/* Campos PF */}
+      {typeUser === "FISICA" && (
+        <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium">Nome Completo *</label>
             <input
@@ -271,10 +271,10 @@ export const MeusDados: React.FC = () => {
               value={nameFisica}
               onChange={(e) => setNameFisica(e.target.value)}
               required
-              className="mt-1 block w-full border rounded p-2"
+              className="mt-1 w-full border rounded p-2"
             />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium">
                 Data de Nascimento *
@@ -284,16 +284,16 @@ export const MeusDados: React.FC = () => {
                 value={dateOfBirth}
                 onChange={(e) => setDateOfBirth(e.target.value)}
                 required
-                className="mt-1 block w-full border rounded p-2"
+                className="mt-1 w-full border rounded p-2"
               />
             </div>
-            <div>
+            <div className="sm:col-span-2">
               <label className="block text-sm font-medium">Gênero *</label>
               <select
                 value={sexo}
                 onChange={(e) => setSexo(e.target.value as Sexo)}
                 required
-                className="mt-1 block w-full border rounded p-2"
+                className="mt-1 w-full border rounded p-2"
               >
                 <option value="">Selecione…</option>
                 <option value="M">Masculino</option>
@@ -302,9 +302,12 @@ export const MeusDados: React.FC = () => {
               </select>
             </div>
           </div>
-        </>
-      ) : (
-        <>
+        </div>
+      )}
+
+      {/* Campos PJ */}
+      {typeUser === "JURIDICA" && (
+        <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium">Razão Social *</label>
             <input
@@ -312,49 +315,48 @@ export const MeusDados: React.FC = () => {
               value={razaoSocial}
               onChange={(e) => setRazaoSocial(e.target.value)}
               required
-              className="mt-1 block w-full border rounded p-2"
+              className="mt-1 w-full border rounded p-2"
             />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
             <div>
               <label className="block text-sm font-medium">
                 Inscrição Estadual *
               </label>
-              <div className="mt-1 flex items-center space-x-2">
-                <input
-                  type="text"
-                  value={stateRegistration}
-                  onChange={(e) => setStateRegistration(e.target.value)}
-                  disabled={isentoIE}
-                  className="flex-1 border rounded p-2 disabled:bg-gray-100"
-                />
-                <label className="inline-flex items-center ml-2">
-                  <input
-                    type="checkbox"
-                    checked={isentoIE}
-                    onChange={(e) => toggleIsento(e.target.checked)}
-                    className="form-checkbox"
-                  />
-                  <span className="ml-1 text-sm">I.E. Isento</span>
-                </label>
-              </div>
+              <input
+                type="text"
+                value={stateRegistration}
+                onChange={(e) => setStateRegistration(e.target.value)}
+                disabled={isentoIE}
+                className="mt-1 w-full border rounded p-2 disabled:bg-gray-100"
+              />
+            </div>
+            <div className="flex items-center space-x-2 pt-5">
+              <input
+                type="checkbox"
+                checked={isentoIE}
+                onChange={(e) => toggleIsento(e.target.checked)}
+                className="form-checkbox h-5 w-5"
+              />
+              <span className="text-sm">I.E. Isento</span>
             </div>
           </div>
-        </>
+        </div>
       )}
 
       {/* Senhas */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium">
-            Informe a Senha {password === "" ? "(deixe em branco para manter)" : "*"}
+            Informe a Senha{" "}
+            {password === "" ? "(deixe em branco para manter)" : "*"}
           </label>
           <input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="mt-1 block w-full border rounded p-2"
             placeholder="********"
+            className="mt-1 w-full border rounded p-2"
           />
         </div>
         <div>
@@ -363,14 +365,14 @@ export const MeusDados: React.FC = () => {
             type="password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
-            className="mt-1 block w-full border rounded p-2"
             placeholder="********"
+            className="mt-1 w-full border rounded p-2"
           />
         </div>
       </div>
 
       {/* Telefone */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
           <label className="block text-sm font-medium">DDD *</label>
           <input
@@ -378,39 +380,39 @@ export const MeusDados: React.FC = () => {
             value={ddd}
             onChange={(e) => setDdd(e.target.value)}
             required
-            className="mt-1 block w-full border rounded p-2"
             placeholder="DDD"
+            className="mt-1 w-full border rounded p-2"
           />
         </div>
-        <div className="md:col-span-2">
+        <div className="sm:col-span-2">
           <label className="block text-sm font-medium">Telefone *</label>
           <input
             type="tel"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             required
-            className="mt-1 block w-full border rounded p-2"
             placeholder="Telefone"
+            className="mt-1 w-full border rounded p-2"
           />
         </div>
       </div>
 
       {/* Newsletter */}
-      <div className="flex items-center">
+      <div className="flex items-center space-x-2">
         <input
           type="checkbox"
           checked={newsletter}
           onChange={(e) => setNewsletter(e.target.checked)}
-          className="form-checkbox h-4 w-4"
+          className="form-checkbox h-5 w-5"
         />
-        <label className="ml-2 text-sm">Recebimento de Newsletter</label>
+        <label className="text-sm">Recebimento de Newsletter</label>
       </div>
 
       {/* Botão */}
       <div className="pt-4">
         <button
           type="submit"
-          className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700"
+          className="w-full bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700"
         >
           Salvar Alterações
         </button>

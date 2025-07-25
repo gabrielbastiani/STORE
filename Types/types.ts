@@ -312,3 +312,16 @@ export interface Cart {
     shippingCost: number;
     total: number;
 }
+
+export interface AddressProps {
+    customer_id: string;
+    street: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    number?: string;
+    neighborhood: string;
+    country: string;
+    complement?: string;
+    reference?: string;
+}

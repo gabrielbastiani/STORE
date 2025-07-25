@@ -496,7 +496,7 @@ export function NavbarStore() {
                             <div
                                 className="text-white cursor-pointer"
                                 onClick={() => {
-                                    router.push(`/meus-dados/${user?.id}`);
+                                    router.push(`/meus-dados`);
                                     setIsMobileMenuOpen(false);
                                     setOpenSubmenus({});
                                 }}

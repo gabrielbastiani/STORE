@@ -1,88 +1,98 @@
+// app/components/paginaCliente/Sidebar.tsx
 "use client";
 
-import { ShoppingCart, DollarSign, Cloud, AtSign, Key, User, MapPin, LogOut } from "lucide-react";
+import { useState, useEffect, JSX } from "react";
+import { ShoppingCart, User, MapPin, LogOut } from "lucide-react";
 
-export type MenuKey =
-  | "pedidos"
-  | "creditos"
-  | "digitais"
-  | "alterar-email"
-  | "alterar-senha"
-  | "dados"
-  | "enderecos"
-  | "sair";
+export type MenuKey = "pedidos" | "dados" | "enderecos" | "sair";
 
 interface SidebarProps {
   active: MenuKey;
   onSelect: (menu: MenuKey) => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ active, onSelect }) => (
-  <nav className="w-64 bg-white border-r h-screen p-4">
-    <h2 className="font-bold text-2xl mb-6 text-black">Minha Conta</h2>
-    <div className="space-y-2">
-      <p className="uppercase text-sm font-semibold text-gray-800">Minhas compras</p>
-      <button
-        onClick={() => onSelect("pedidos")}
-        className={`text-sm flex items-center w-full p-2 rounded hover:bg-gray-100 text-gray-600 border-gray-600 border-2 ${active === "pedidos" ? "bg-gray-100" : ""
-          }`}
-      >
-        <ShoppingCart className="mr-2" size={18} /> Meus Pedidos
-      </button>
+export const Sidebar: React.FC<SidebarProps> = ({ active, onSelect }) => {
+  // detecta se estamos em mobile
+  const [isMobile, setIsMobile] = useState<boolean>(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
-      <button
-        onClick={() => onSelect("creditos")}
-        className={`text-sm flex items-center w-full p-2 rounded hover:bg-gray-100 text-gray-600 border-gray-600 border-2 ${active === "creditos" ? "bg-gray-100" : ""
-          }`}
-      >
-        <DollarSign className="mr-2" size={18} /> Meus Créditos
-      </button>
+  const items: { key: MenuKey; label: string; icon: JSX.Element }[] = [
+    { key: "pedidos", label: "Pedidos",   icon: <ShoppingCart size={20} /> },
+    { key: "dados",   label: "Dados",     icon: <User size={20} /> },
+    { key: "enderecos", label: "Endereços",icon: <MapPin size={20} /> },
+    { key: "sair",    label: "Sair",      icon: <LogOut size={20} /> },
+  ];
 
-      <button
-        onClick={() => onSelect("digitais")}
-        className={`text-sm flex items-center w-full p-2 rounded hover:bg-gray-100 text-gray-600 border-gray-600 border-2 ${active === "digitais" ? "bg-gray-100" : ""
-          }`}
-      >
-        <Cloud className="mr-2" size={18} /> Meus Produtos Digitais
-      </button>
+  // Modo MOBILE: barra horizontal fixa abaixo da Navbar
+  if (isMobile) {
+    return (
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t z-10">
+        <div className="flex justify-around">
+          {items.map(({ key, icon, label }) => (
+            <button
+              key={key}
+              onClick={() => onSelect(key)}
+              className={`flex flex-col items-center justify-center py-2 flex-1
+                ${active === key
+                  ? "text-blue-600 border-t-2 border-blue-600"
+                  : "text-gray-600"}
+              `}
+            >
+              {icon}
+              <span className="text-xs mt-1">{label}</span>
+            </button>
+          ))}
+        </div>
+      </nav>
+    );
+  }
 
-      <p className="uppercase text-sm font-semibold text-gray-800 mt-6">Cadastro</p>
+  // Modo DESKTOP: sidebar fixa vertical
+  return (
+    <nav className="hidden md:block w-64 bg-white border-r h-screen p-4">
+      <h2 className="font-bold text-2xl mb-6 text-black">Minha Conta</h2>
+      <div className="space-y-2">
+        <p className="uppercase text-sm font-semibold text-gray-800">
+          Minhas compras
+        </p>
+        {items.slice(0, 1).map(({ key, icon, label }) => (
+          <button
+            key={key}
+            onClick={() => onSelect(key)}
+            className={`
+              flex items-center w-full p-2 rounded hover:bg-gray-100
+              ${active === key ? "bg-gray-100" : ""}
+              text-gray-600 border border-gray-300
+            `}
+          >
+            <span className="mr-2">{icon}</span>
+            {label}
+          </button>
+        ))}
 
-      <button
-        onClick={() => onSelect("alterar-email")}
-        className="text-sm flex items-center w-full p-2 rounded hover:bg-gray-100 text-gray-600 border-gray-600 border-2"
-      >
-        <AtSign className="mr-2" size={18} /> Alterar E‑mail
-      </button>
-
-      <button
-        onClick={() => onSelect("alterar-senha")}
-        className="text-sm flex items-center w-full p-2 rounded hover:bg-gray-100 text-gray-600 border-gray-600 border-2"
-      >
-        <Key className="mr-2" size={18} /> Alterar Senha
-      </button>
-
-      <button
-        onClick={() => onSelect("dados")}
-        className={`text-sm flex items-center w-full p-2 rounded hover:bg-gray-100 text-gray-600 border-gray-600 border-2 ${active === "dados" ? "bg-gray-100" : ""
-          }`}
-      >
-        <User className="mr-2" size={18} /> Meus Dados
-      </button>
-
-      <button
-        onClick={() => onSelect("enderecos")}
-        className="text-sm flex items-center w-full p-2 rounded hover:bg-gray-100 text-gray-600 border-gray-600 border-2"
-      >
-        <MapPin className="mr-2" size={18} /> Meus Endereços
-      </button>
-
-      <button
-        onClick={() => onSelect("sair")}
-        className="text-sm flex items-center w-full p-2 rounded hover:bg-gray-100 text-gray-600 border-gray-600 border-2 mt-4"
-      >
-        <LogOut className="mr-2" size={18} /> Sair
-      </button>
-    </div>
-  </nav>
-);
+        <p className="uppercase text-sm font-semibold text-gray-800 mt-6">
+          Cadastro
+        </p>
+        {items.slice(1).map(({ key, icon, label }) => (
+          <button
+            key={key}
+            onClick={() => onSelect(key)}
+            className={`
+              flex items-center w-full p-2 rounded hover:bg-gray-100
+              ${active === key ? "bg-gray-100" : ""}
+              text-gray-600 border border-gray-300
+            `}
+          >
+            <span className="mr-2">{icon}</span>
+            {label}
+          </button>
+        ))}
+      </div>
+    </nav>
+  );
+};
