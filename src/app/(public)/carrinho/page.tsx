@@ -2,7 +2,7 @@
 
 import { useTheme } from "@/app/contexts/ThemeContext";
 import { useCart } from "@/app/contexts/CartContext";
-import { useState } from "react";
+import { useState, ChangeEvent } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -12,6 +12,7 @@ import {
 } from "react-icons/fi";
 import { FooterCheckout } from "@/app/components/footer/footerCheckout";
 import { NavbarCheckout } from "@/app/components/navbar/navbarCheckout";
+import { toast } from "react-toastify";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL; // ex: http://localhost:3001
 
@@ -23,10 +24,11 @@ interface ShippingOption {
 }
 
 export default function CartPage() {
+
   const { colors } = useTheme();
+
   const {
     cart,
-    cartCount,
     loading: cartLoading,
     updateItem,
     removeItem,
@@ -47,10 +49,23 @@ export default function CartPage() {
     setDiscountValue(cart.subtotal * 0.1);
   }
 
+  // formata o CEP enquanto o usuário digita
+  function handleCepChange(e: ChangeEvent<HTMLInputElement>) {
+    // remove tudo que não é dígito
+    let digits = e.target.value.replace(/\D/g, "");
+    // limita a 8 dígitos
+    if (digits.length > 8) digits = digits.slice(0, 8);
+    // insere hífen após 5 dígitos
+    if (digits.length > 5) {
+      digits = digits.slice(0, 5) + "-" + digits.slice(5);
+    }
+    setCep(digits);
+  }
+
   // **Chama o backend para cotar frete via Melhor Envio**
   async function calculateShipping() {
-    if (!cep.match(/^\d{5}-?\d{3}$/)) {
-      alert("Informe um CEP válido (00000-000)");
+    if (!cep.match(/^\d{5}-\d{3}$/)) {
+      toast.error("Informe um CEP válido (00000-000)");
       return;
     }
 
@@ -61,17 +76,18 @@ export default function CartPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           cepDestino: cep,
-          items:       cart.items.map(i => ({
+          items: cart.items.map(i => ({
             quantity: i.quantity,
-            weight:   i.weight,
-            length:   i.length,
-            height:   i.height,
-            width:    i.width
+            weight: i.weight,
+            length: i.length,
+            height: i.height,
+            width: i.width
           }))
         })
       });
 
       const data = await res.json();
+
       if (res.ok) {
         setShippingOptions(data.options);
         if (data.options.length > 0) {
@@ -90,7 +106,7 @@ export default function CartPage() {
   }
 
   const fmt = new Intl.NumberFormat("pt-BR", {
-    style:    "currency",
+    style: "currency",
     currency: "BRL",
   }).format;
 
@@ -188,7 +204,7 @@ export default function CartPage() {
               <input
                 type="text"
                 value={cep}
-                onChange={e => setCep(e.target.value)}
+                onChange={handleCepChange}
                 placeholder="00000-000"
                 className="flex-1 border border-gray-300 rounded px-3 py-2 text-black"
               />
@@ -207,7 +223,7 @@ export default function CartPage() {
 
           {/* Opções de frete */}
           {shippingOptions.length > 0 && (
-            <div className="bg-white p-4 rounded shadow space-y-2">
+            <div className="bg-white p-4 rounded shadow space-y-2 text-black">
               {shippingOptions.map(opt => (
                 <div
                   key={opt.id}
@@ -236,85 +252,85 @@ export default function CartPage() {
           )}
 
           {/* Cupom */}
-                    <div className="bg-white p-4 rounded shadow space-y-2">
-                        <label className="block text-sm font-medium text-gray-700">
-                            Possui cupom de desconto?
-                        </label>
-                        <div className="flex space-x-2">
-                            <input
-                                type="text"
-                                value={coupon}
-                                onChange={(e) => setCoupon(e.target.value)}
-                                placeholder="Código"
-                                className="flex-1 border border-gray-300 rounded px-3 py-2 text-black"
-                            />
-                            <button
-                                onClick={applyCoupon}
-                                className="bg-gray-800 hover:bg-gray-900 text-white px-4 rounded"
-                            >
-                                Calcular
-                            </button>
-                        </div>
-                        {discountValue > 0 && (
-                            <p className="text-green-600 text-sm">
-                                Desconto aplicado: {fmt(discountValue)}
-                            </p>
-                        )}
-                    </div>
+          <div className="bg-white p-4 rounded shadow space-y-2">
+            <label className="block text-sm font-medium text-gray-700">
+              Possui cupom de desconto?
+            </label>
+            <div className="flex space-x-2">
+              <input
+                type="text"
+                value={coupon}
+                onChange={(e) => setCoupon(e.target.value)}
+                placeholder="Código"
+                className="flex-1 border border-gray-300 rounded px-3 py-2 text-black"
+              />
+              <button
+                onClick={applyCoupon}
+                className="bg-gray-800 hover:bg-gray-900 text-white px-4 rounded"
+              >
+                Calcular
+              </button>
+            </div>
+            {discountValue > 0 && (
+              <p className="text-green-600 text-sm">
+                Desconto aplicado: {fmt(discountValue)}
+              </p>
+            )}
+          </div>
 
-                    {/* Totalizadores */}
-                    <div className="bg-white p-4 rounded shadow space-y-1">
-                        <div className="flex justify-between">
-                            <span className="font-medium text-black">Subtotal</span>
-                            <span className="text-black">{fmt(cart.subtotal)}</span>
-                        </div>
-                        {discountValue > 0 && (
-                            <div className="flex justify-between text-green-600">
-                                <span className="font-medium text-black">Desconto</span>
-                                <span className="text-black">-{fmt(discountValue)}</span>
-                            </div>
-                        )}
-                        {selectedShipping && (
-                            <div className="flex justify-between">
-                                <span className="font-medium">Frete</span>
-                                <span className="text-black">
-                                    {fmt(
-                                        shippingOptions.find((o) => o.id === selectedShipping)!
-                                            .price
-                                    )}
-                                </span>
-                            </div>
-                        )}
-                        <div className="border-t pt-2 flex justify-between font-bold">
-                            <span className="text-black">Total</span>
-                            <span className="text-red-500">{fmt(total)}</span>
-                        </div>
-                        <p className="text-xs text-gray-500">
-                            12x de {fmt(total / 12)} sem juros
-                        </p>
-                    </div>
+          {/* Totalizadores */}
+          <div className="bg-white p-4 rounded shadow space-y-1">
+            <div className="flex justify-between">
+              <span className="font-medium text-black">Subtotal</span>
+              <span className="text-black">{fmt(cart.subtotal)}</span>
+            </div>
+            {discountValue > 0 && (
+              <div className="flex justify-between text-green-600">
+                <span className="font-medium text-black">Desconto</span>
+                <span className="text-black">-{fmt(discountValue)}</span>
+              </div>
+            )}
+            {selectedShipping && (
+              <div className="flex justify-between">
+                <span className="font-medium text-gray-500">Frete</span>
+                <span className="text-black">
+                  {fmt(
+                    shippingOptions.find((o) => o.id === selectedShipping)!
+                      .price
+                  )}
+                </span>
+              </div>
+            )}
+            <div className="border-t pt-2 flex justify-between font-bold">
+              <span className="text-black">Total</span>
+              <span className="text-red-500">{fmt(total)}</span>
+            </div>
+            <p className="text-xs text-gray-500">
+              12x de {fmt(total / 12)} sem juros
+            </p>
+          </div>
 
-                    {/* Botões finais */}
-                    <div className="space-y-2">
-                        <button
-                            onClick={() => clearCart()}
-                            className="w-full bg-gray-800 hover:bg-gray-900 text-white py-3 rounded font-semibold"
-                        >
-                            LIMPAR CARRINHO
-                        </button>
-                        <button className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded font-semibold">
-                            FINALIZAR COMPRA
-                        </button>
-                        <Link
-                            href="/"
-                            className="block text-center text-gray-800 hover:underline"
-                        >
-                            Continuar Comprando
-                        </Link>
-                    </div>
-                </aside>
-            </main>
-            <FooterCheckout />
-        </div>
-    );
+          {/* Botões finais */}
+          <div className="space-y-2">
+            <button
+              onClick={() => clearCart()}
+              className="w-full bg-gray-800 hover:bg-gray-900 text-white py-3 rounded font-semibold"
+            >
+              LIMPAR CARRINHO
+            </button>
+            <button className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded font-semibold">
+              FINALIZAR COMPRA
+            </button>
+            <Link
+              href="/"
+              className="block text-center text-gray-800 hover:underline"
+            >
+              Continuar Comprando
+            </Link>
+          </div>
+        </aside>
+      </main>
+      <FooterCheckout />
+    </div>
+  );
 }
