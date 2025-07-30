@@ -297,6 +297,7 @@ export interface BadgeWizardDto {
 }
 
 export interface CartItem {
+    variant_id: any;
     weight: number;
     length: number;
     width: number;

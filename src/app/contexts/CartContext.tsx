@@ -1,4 +1,4 @@
-"use client";
+"use client"
 
 import React, {
   createContext,
@@ -41,12 +41,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
   });
   const [loading, setLoading] = useState(true);
 
-  // axios para buscar produto no guest cart
   const productAPI = axios.create({
     baseURL: process.env.NEXT_PUBLIC_API_URL,
   });
 
-  // calcula subtotal + total
+  // Recalcula subtotal + total
   function recalc(items: CartItem[], shippingCost = cart.shippingCost): Cart {
     const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
     const total = subtotal + shippingCost;
@@ -59,20 +58,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
     };
   }
 
-  // Carrega carrinho do backend ou guest
+  // Carrega do backend ou guest
   useEffect(() => {
     async function load() {
       try {
         const backendCart = await fetchCart();
         setCart(backendCart);
       } catch {
-        // se falhar, tenta guest
         const guest = localStorage.getItem("guest_cart");
-        if (guest) {
-          setCart(JSON.parse(guest));
-        } else {
-          setCart({ id: "", items: [], subtotal: 0, shippingCost: 0, total: 0 });
-        }
+        if (guest) setCart(JSON.parse(guest));
+        else setCart({ id: "", items: [], subtotal: 0, shippingCost: 0, total: 0 });
       } finally {
         setLoading(false);
       }
@@ -80,24 +75,21 @@ export function CartProvider({ children }: { children: ReactNode }) {
     load();
   }, []);
 
-  // sincroniza guest_cart
+  // Sincroniza guest_cart
   useEffect(() => {
     if (!cart.id) {
       localStorage.setItem("guest_cart", JSON.stringify(cart));
     }
   }, [cart]);
 
-  // adiciona item
+  // ADD
   const addItem = async (productId: string, quantity = 1) => {
     setLoading(true);
     try {
       if (cart.id) {
-        // usuário logado: chama API
         const updated = await apiAddItem(productId, quantity);
         setCart(updated);
       } else {
-        // guest: busca detalhes do produto para preencher nome e preço
-        // se já existir, apenas incrementa
         const exists = cart.items.find((i) => i.product_id === productId);
         let items: CartItem[];
         if (exists) {
@@ -107,16 +99,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
               : i
           );
         } else {
-          // busca produto
           const { data: prod } = await productAPI.get<{
             id: string;
             name: string;
-            images: any;
+            images: any[];
             price_per: number;
             weight: number;
             length: number;
             width: number;
             height: number;
+            variant_id: string;
           }>(`/product/unique/data?product_id=${productId}`);
           items = [
             ...cart.items,
@@ -130,7 +122,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
               weight: prod.weight,
               length: prod.length,
               width: prod.width,
-              height: prod.height
+              height: prod.height,
+              variant_id: prod.variant_id,
             },
           ];
         }
@@ -141,7 +134,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // atualiza quantidade
+  // UPDATE
   const updateItem = async (itemId: string, quantity: number) => {
     setLoading(true);
     try {
@@ -159,7 +152,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // remove item
+  // REMOVE
   const removeItem = async (itemId: string) => {
     setLoading(true);
     try {
@@ -175,7 +168,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // limpa carrinho
+  // CLEAR
   const clearCart = async () => {
     setLoading(true);
     try {
