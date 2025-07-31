@@ -1,12 +1,12 @@
-"use client";
+'use client';
 
-import React, { ChangeEvent, useEffect, useState } from "react";
+import React, { ChangeEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { FiTrash2, FiPlus, FiMinus } from "react-icons/fi";
+import { FiTrash2, FiPlus, FiMinus, FiX } from "react-icons/fi";
 import { useTheme } from "@/app/contexts/ThemeContext";
 import { useCart } from "@/app/contexts/CartContext";
-import { usePromotions } from "@/app/hooks/usePromotions";
+import { usePromotions, PromotionDetail } from "@/app/hooks/usePromotions";
 import { toast } from "react-toastify";
 import { NavbarCheckout } from "@/app/components/navbar/navbarCheckout";
 import { FooterCheckout } from "@/app/components/footer/footerCheckout";
@@ -22,22 +22,23 @@ interface ShippingOption {
 }
 
 export default function CartPage() {
-
   const { colors } = useTheme();
-
-  const { cart, loading: cartLoading, updateItem, removeItem, clearCart } = useCart();
+  const { cart, loading: cartLoading, updateItem, removeItem, clearCart } =
+    useCart();
 
   // CEP / frete
   const [cep, setCep] = useState("");
   const [shippingOptions, setShippingOptions] = useState<ShippingOption[]>([]);
   const [selectedShipping, setSelectedShipping] = useState<string | null>(null);
+
   const [loadingFrete, setLoadingFrete] = useState(false);
 
   // cupom: campo de digitação vs cupom aplicado
   const [couponInput, setCouponInput] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
+  const [validatingCoupon, setValidatingCoupon] = useState(false); // ← adicionado
 
-  // se é a primeira compra (você pode buscar do backend)
+  // se é a primeira compra
   const isFirstPurchase = false;
 
   // Frete atual
@@ -45,27 +46,32 @@ export default function CartPage() {
     ? shippingOptions.find((o) => o.id === selectedShipping)?.price || 0
     : 0;
 
-  // Hook de promoções
+  // Hook de promoções (retorna também `promotions`)
   const {
     discountTotal,
     freeGifts,
     badgeMap,
-    descriptions,
+    promotions,
     loading: loadingPromo,
     error: promoError,
   } = usePromotions(cep, appliedCoupon, currentFrete, isFirstPurchase);
+
+  // separar descontos de frete e produto
+  const shippingDiscount = promotions
+    .filter((p) => p.type === 'shipping')
+    .reduce((sum, p) => sum + p.discount, 0);
+
+  const productDiscount = discountTotal - shippingDiscount;
 
   // lookup de nomes e tipos de brinde
   const [giftInfo, setGiftInfo] = useState<
     Record<string, { name: string; type: "produto" | "variante" }>
   >({});
 
-  // Sempre que freeGifts mudar, buscar nomes dos brindes “fora do carrinho”
   useEffect(() => {
     const missing = freeGifts
       .map((g) => g.variantId)
       .filter((id) => !giftInfo[id]);
-
     if (missing.length === 0) return;
 
     missing.forEach(async (id) => {
@@ -84,7 +90,6 @@ export default function CartPage() {
       } catch {
         // ignora e tenta variante
       }
-
       // busca como VARIANTE
       try {
         const varRes = await axios.get<{ sku: string; name?: string }>(
@@ -104,12 +109,12 @@ export default function CartPage() {
     });
   }, [freeGifts, giftInfo]);
 
-  // Formata moeda
+  // formata moeda
   const fmt = new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL",
   }).format;
-  const total = cart.subtotal - discountTotal + currentFrete;
+  const total = cart.subtotal - productDiscount + (currentFrete - shippingDiscount);
 
   // formata CEP
   function handleCepChange(e: ChangeEvent<HTMLInputElement>) {
@@ -119,11 +124,18 @@ export default function CartPage() {
   }
 
   // calcula frete
-  async function calculateShipping() {
+  const calculateShipping = useCallback(async () => {
+    // não calcula sem itens
+    if (cart.items.length === 0) {
+      toast.warn("Adicione itens ao carrinho antes de calcular o frete.");
+      return;
+    }
+    // valida CEP
     if (!cep.match(/^\d{5}-\d{3}$/)) {
       toast.error("Informe um CEP válido (00000-000)");
       return;
     }
+
     setLoadingFrete(true);
     try {
       const res = await fetch(`${API_URL}/shipment/calculate`, {
@@ -143,7 +155,9 @@ export default function CartPage() {
       const data = await res.json();
       if (res.ok) {
         setShippingOptions(data.options);
-        if (data.options.length) setSelectedShipping(data.options[0].id);
+        if (data.options.length) {
+          setSelectedShipping(data.options[0].id);
+        }
       } else {
         toast.error("Não foi possível calcular o frete.");
       }
@@ -152,6 +166,62 @@ export default function CartPage() {
     } finally {
       setLoadingFrete(false);
     }
+  }, [cep, cart.items]);
+
+  useEffect(() => {
+    if (cart.items.length === 0) {
+      setShippingOptions([]);
+      setSelectedShipping(null);
+    }
+  }, [cart.items.length]);
+
+  useEffect(() => {
+    if (shippingOptions.length > 0 && cep.match(/^\d{5}-\d{3}$/)) {
+      calculateShipping();
+    }
+  }, [cart.items, cep, shippingOptions.length, calculateShipping]);
+
+  // aplica cupom COM VALIDAÇÃO
+  async function applyCoupon() {
+    const code = couponInput.trim();
+    if (!code) return;
+
+    setValidatingCoupon(true);
+    try {
+      const res = await axios.post<{ valid: boolean }>(
+        `${API_URL}/coupon/validate`,
+        {
+          cartItems: cart.items.map(i => ({
+            variantId: i.variant_id,
+            productId: i.product_id,
+            quantity: i.quantity,
+            unitPrice: i.price,
+          })),
+          customer_id: cart.id || null,
+          isFirstPurchase,
+          cep: cep || null,
+          shippingCost: currentFrete,
+          coupon: code,
+        }
+      );
+      if (res.data.valid) {
+        setAppliedCoupon(code);
+        toast.success(`Cupom “${code}” aplicado!`);
+      } else {
+        toast.error("Cupom inválido, desativado ou não cadastrado.");
+      }
+    } catch {
+      toast.error("Erro ao validar cupom. Tente novamente.");
+    } finally {
+      setValidatingCoupon(false);
+    }
+  }
+
+  // remove cupom
+  function removeCoupon() {
+    setAppliedCoupon(null);
+    setCouponInput("");
+    toast.info("Cupom removido");
   }
 
   return (
@@ -161,7 +231,9 @@ export default function CartPage() {
       <main className="container mx-auto px-4 py-8 grid lg:grid-cols-3 gap-8">
         {/* Itens do Carrinho */}
         <section className="lg:col-span-2 space-y-4">
-          {cartLoading && <p className="text-center text-gray-500">Carregando carrinho…</p>}
+          {cartLoading && (
+            <p className="text-center text-gray-500">Carregando carrinho…</p>
+          )}
           {!cartLoading && cart.items.length === 0 && (
             <p className="text-center text-gray-500">Carrinho vazio...</p>
           )}
@@ -273,7 +345,10 @@ export default function CartPage() {
           {shippingOptions.length > 0 && (
             <div className="bg-white p-4 rounded shadow space-y-2 text-black">
               {shippingOptions.map((opt) => (
-                <div key={opt.id} className="flex items-center justify-between">
+                <div
+                  key={opt.id}
+                  className="flex items-center justify-between"
+                >
                   <label className="flex-1 cursor-pointer">
                     <input
                       type="radio"
@@ -301,33 +376,79 @@ export default function CartPage() {
             <label className="block text-sm font-medium text-gray-700">
               Possui cupom?
             </label>
-            <div className="flex space-x-2">
-              <input
-                type="text"
-                value={couponInput}
-                onChange={(e) => setCouponInput(e.target.value)}
-                placeholder="Código"
-                className="flex-1 border border-gray-300 rounded px-3 py-2 text-black"
-              />
-              <button
-                onClick={() => setAppliedCoupon(couponInput.trim() || null)}
-                className="bg-gray-800 text-white px-4 rounded"
-              >
-                Aplicar
-              </button>
-            </div>
-            {loadingPromo && <p className="text-red-200">Aplicando promoções…</p>}
+
+            {!appliedCoupon ? (
+              <div className="flex space-x-2">
+                <input
+                  type="text"
+                  value={couponInput}
+                  onChange={(e) => setCouponInput(e.target.value)}
+                  placeholder="Código"
+                  className="flex-1 border border-gray-300 rounded px-3 py-2 text-black"
+                />
+                <button
+                  onClick={applyCoupon}
+                  disabled={!couponInput.trim() || validatingCoupon}
+                  className="bg-gray-800 text-white px-4 rounded disabled:opacity-50"
+                >
+                  {validatingCoupon ? "Validando…" : "Aplicar"}
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between bg-indigo-50 p-2 rounded">
+                <span className="text-indigo-800">
+                  Cupom <strong>{appliedCoupon}</strong> aplicado
+                </span>
+                <button
+                  onClick={removeCoupon}
+                  className="p-1 text-indigo-600 hover:text-indigo-900"
+                  title="Remover cupom"
+                >
+                  <FiX />
+                </button>
+              </div>
+            )}
+
+            {loadingPromo && (
+              <p className="text-red-200">Aplicando promoções…</p>
+            )}
             {promoError && <p className="text-red-600">{promoError}</p>}
             {!promoError && discountTotal > 0 && (
               <p className="text-green-600">Desconto: -{fmt(discountTotal)}</p>
             )}
           </div>
 
-          {descriptions.length > 0 && (
-            <div className="bg-indigo-50 p-4 rounded text-indigo-800 space-y-2 text-sm">
-              {descriptions.map((desc, i) => (
-                <p key={i}>🔖 {desc}</p>
-              ))}
+          {/* Listagem das promoções individuais */}
+          {promotions.length > 0 && (
+            <div className="bg-gray-50 p-4 rounded space-y-2">
+              <h3 className="font-semibold text-black">Promoções aplicadas</h3>
+              <ul className="list-disc list-inside">
+                {promotions.map((p: PromotionDetail) => (
+                  <li
+                    key={p.id}
+                    className="flex justify-between items-start"
+                  >
+                    <div>
+                      {p.description && (
+                        <p className="text-sm text-gray-600">
+                          {p.description}
+                        </p>
+                      )}
+                    </div>
+                    <span
+                      className={
+                        p.type === "shipping"
+                          ? "text-blue-600"
+                          : p.type === "product"
+                            ? "text-green-600"
+                            : "text-gray-600"
+                      }
+                    >
+                      -{fmt(p.discount)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
@@ -344,15 +465,41 @@ export default function CartPage() {
               </div>
             )}
             {currentFrete > 0 && (
-              <div className="flex justify-between">
-                <span className="text-gray-700">Frete</span>
-                <span className="text-black">{fmt(currentFrete)}</span>
+              <>
+                {shippingDiscount > 0 ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-gray-700">Frete</span>
+                      <span className="line-through text-gray-500">
+                        {fmt(currentFrete)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-blue-600 font-semibold">
+                      <span className="text-gray-700">Frete (com desconto)</span>
+                      <span>{fmt(currentFrete - shippingDiscount)}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex justify-between">
+                    <span className="text-gray-700">Frete</span>
+                    <span className="text-black">{fmt(currentFrete)}</span>
+                  </div>
+                )}
+              </>
+            )}
+
+            {productDiscount > 0 && (
+              <div className="flex justify-between text-green-600">
+                <span className="text-gray-700">Desconto</span>
+                <span>-{fmt(productDiscount)}</span>
               </div>
             )}
+
             <div className="border-t pt-2 flex justify-between font-bold">
               <span className="text-gray-700">Total</span>
               <span className="text-red-500">{fmt(total)}</span>
             </div>
+
             <p className="text-xs text-gray-500">
               12x de {fmt(total / 12)} sem juros
             </p>
@@ -387,13 +534,15 @@ export default function CartPage() {
             <button className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded">
               FINALIZAR COMPRA
             </button>
-            <Link href="/" className="block text-center text-gray-800 hover:underline">
+            <Link
+              href="/"
+              className="block text-center text-gray-800 hover:underline"
+            >
               Continuar Comprando
             </Link>
           </div>
         </aside>
       </main>
-
       <FooterCheckout />
     </div>
   );

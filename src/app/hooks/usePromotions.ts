@@ -1,12 +1,24 @@
-import { useEffect, useState } from "react";
-import { useCart } from "@/app/contexts/CartContext";
-import axios from "axios";
+// src/app/hooks/usePromotions.ts
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useCart } from '@/app/contexts/CartContext';
+import axios from 'axios';
+
+export interface PromotionDetail {
+    id: string;
+    name: string;
+    description: string;
+    discount: number;
+    type: 'product' | 'shipping' | 'mixed';
+}
 
 export interface PromotionResult {
     discountTotal: number;
     freeGifts: Array<{ variantId: string; quantity: number }>;
     badgeMap: Record<string, { title: string; imageUrl: string }>;
     descriptions: string[];
+    promotions: PromotionDetail[];
 }
 
 export function usePromotions(
@@ -16,19 +28,27 @@ export function usePromotions(
     isFirstPurchase: boolean
 ) {
     const { cart } = useCart();
+
     const [promo, setPromo] = useState<PromotionResult>({
         discountTotal: 0,
         freeGifts: [],
         badgeMap: {},
-        descriptions: []
+        descriptions: [],
+        promotions: [],
     });
+
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        // só chame se houver cupom aplicado OU se mudar frete/cep sem cupom
         if (!cart.items.length) {
-            setPromo({ discountTotal: 0, freeGifts: [], badgeMap: {}, descriptions: [] });
+            setPromo({
+                discountTotal: 0,
+                freeGifts: [],
+                badgeMap: {},
+                descriptions: [],
+                promotions: [],
+            });
             setError(null);
             return;
         }
@@ -56,15 +76,35 @@ export function usePromotions(
             .then((res) => {
                 setPromo(res.data);
                 if (appliedCoupon && res.data.discountTotal === 0) {
-                    setError("Cupom inválido ou não aplicável.");
+                    setError('Cupom inválido ou não aplicável.');
                 }
             })
             .catch(() => {
-                setError("Erro ao aplicar promoções.");
-                setPromo({ discountTotal: 0, freeGifts: [], badgeMap: {}, descriptions: [] });
+                setError('Erro ao aplicar promoções.');
+                setPromo({
+                    discountTotal: 0,
+                    freeGifts: [],
+                    badgeMap: {},
+                    descriptions: [],
+                    promotions: [],
+                });
             })
             .finally(() => setLoading(false));
-    }, [cart.items, cep, appliedCoupon, shippingCost, isFirstPurchase]);
+    }, [
+        cart.items,
+        cep,
+        appliedCoupon,
+        shippingCost,
+        isFirstPurchase,
+    ]);
 
-    return { ...promo, loading, error };
+    return {
+        discountTotal: promo.discountTotal,
+        freeGifts: promo.freeGifts,
+        badgeMap: promo.badgeMap,
+        descriptions: promo.descriptions,
+        promotions: promo.promotions,
+        loading,
+        error,
+    };
 }
