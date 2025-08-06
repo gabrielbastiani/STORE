@@ -22,6 +22,7 @@ interface ShippingOption {
 }
 
 export default function CartPage() {
+  
   const { colors } = useTheme();
   const { cart, loading: cartLoading, updateItem, removeItem, clearCart } =
     useCart();
