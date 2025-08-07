@@ -38,11 +38,7 @@ const passwordSchema = z
 
 type PasswordFormValues = z.infer<typeof passwordSchema>
 
-export default function RecoverPasswordCustomer({
-    params,
-}: {
-    params: Promise<{ recover_password_customer_id: string }>
-}) {
+export default function RecoverPasswordCustomer({ params }: { params: Promise<{ recover_password_customer_id: string }>}) {
 
     const { recover_password_customer_id } = React.use(params)
     const [cognitiveValid, setCognitiveValid] = useState(false)

@@ -54,7 +54,6 @@ export interface VariantFormData {
     images: File[]
     product_id?: string
     created_at?: string
-    productVariantImage?: any[]
     productVariantVideo?: any[]
     variantAttributes: VariantAttribute[];
     videos?: VideoInput[];
@@ -62,6 +61,9 @@ export interface VariantFormData {
     existingImages?: ImageRecord[]
     newImages?: File[]
     newVideos?: VideoInput[]
+    productVariantImage?: { url: string; altText: string }[];
+    variantAttribute?: { key: string; value: string }[];
+    mainPromotion?: Promotion;
 }
 
 export interface VariantAttribute {
@@ -95,6 +97,9 @@ export interface ProductVariant {
     attributes?: VariantAttribute[]
     images?: File[]
     videoLinks?: string[]
+    productVariantImage?: { url: string; altText: string }[];
+    variantAttribute?: { key: string; value: string }[];
+    mainPromotion?: Promotion;
 }
 
 export interface ProductFormData {
@@ -116,6 +121,7 @@ export interface ProductFormData {
     height?: number;
     categories: string[];
     mainPromotion_id?: string;
+    mainPromotion?: Promotion;
     buyTogether_id?: string | null;
     images: ImageRecord[];
     videos: VideoInput[];
@@ -127,6 +133,10 @@ export interface ProductFormData {
     videoLinks?: string[]
     existingImages?: ImageRecord[];
     newImages?: File[];
+    buyTogether?: { id: string; name: string; product: ProductFormData[] };
+    productRelations?: Array<{ relatedProduct: ProductFormData }>;
+    parentRelations?: Array<{ childProduct: ProductFormData }>;
+    childRelations?: Array<{ childProduct: ProductFormData }>;
 }
 
 export interface RelationFormData {
@@ -329,4 +339,24 @@ export interface AddressProps {
     country: string;
     complement?: string;
     reference?: string;
+}
+
+export interface Promotion {
+    id: string;
+    name: string;
+    description: string;
+    startDate: string;
+    endDate: string;
+    hasCoupon: boolean;
+    cumulative: boolean;
+}
+
+export interface LoginFormData {
+    email: string;
+    password: string;
+}
+
+export interface ReviewFormData {
+    rating: number;
+    comment: string;
 }
