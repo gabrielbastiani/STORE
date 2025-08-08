@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ProductFormData } from "Types/types"; 
+import { ProductFormData } from "Types/types";
 import { ChevronRight } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -11,12 +11,12 @@ interface RelatedProductsSectionProps {
 
 export default function RelatedProductsSection({ products }: RelatedProductsSectionProps) {
 
-   /*  console.log(products) */
+    /*  console.log(products) */
 
     if (!products || products.length === 0) return null;
 
     const formatPrice = (v: number) =>
-    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+        new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 
     return (
         <div className="mt-8 border-t border-gray-200 pt-6">

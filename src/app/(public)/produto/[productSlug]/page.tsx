@@ -369,11 +369,64 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
   const stockAvailable = selectedVariant?.stock != null ? selectedVariant.stock : product?.stock ?? 0;
 
   // Produtos relacionados
-  const relatedProducts: any[] = [
-    ...(product?.productRelations?.map((r: any) => r.relatedProduct) || []),
-    ...(product?.parentRelations?.map((r: any) => r.childProduct) || []),
-    ...(product?.childRelations?.map((r: any) => r.childProduct) || []),
-  ];
+  // --- CORREÇÃO: reunir todas as possíveis referências, filtrar inválidos,
+  // remover o produto atual e eliminar duplicatas por id
+  const relatedProducts: any[] = (() => {
+    if (!product) return [];
+
+    const gathered: any[] = [];
+
+    // Pode vir em productRelations / parentRelations / childRelations
+    if (Array.isArray(product.productRelations)) {
+      product.productRelations.forEach((r: any) => {
+        if (r.relatedProduct) gathered.push(r.relatedProduct);
+        if (r.childProduct) gathered.push(r.childProduct);
+        if (r.parentProduct) gathered.push(r.parentProduct);
+      });
+    }
+
+    if (Array.isArray(product.parentRelations)) {
+      product.parentRelations.forEach((r: any) => {
+        if (r.childProduct) gathered.push(r.childProduct);
+        if (r.parentProduct) gathered.push(r.parentProduct);
+        if (r.relatedProduct) gathered.push(r.relatedProduct);
+      });
+    }
+
+    if (Array.isArray(product.childRelations)) {
+      product.childRelations.forEach((r: any) => {
+        if (r.childProduct) gathered.push(r.childProduct);
+        if (r.parentProduct) gathered.push(r.parentProduct);
+        if (r.relatedProduct) gathered.push(r.relatedProduct);
+      });
+    }
+
+    // Também manter compatibilidade com os formatos originais que você usou
+    // (caso os nomes dos campos sejam exatamente esses)
+    try {
+      const fromDirectMaps = [
+        ...(product.productRelations?.map((r: any) => r.relatedProduct) || []),
+        ...(product.parentRelations?.map((r: any) => r.childProduct) || []),
+        ...(product.childRelations?.map((r: any) => r.childProduct) || []),
+      ];
+      gathered.push(...fromDirectMaps);
+    } catch (e) {
+      // noop
+    }
+
+    const seen = new Set<string>();
+    const filtered: any[] = [];
+
+    for (const p of gathered) {
+      if (!p || !p.id) continue;
+      if (product?.id && p.id === product.id) continue; // remove próprio produto
+      if (seen.has(p.id)) continue; // dedupe
+      seen.add(p.id);
+      filtered.push(p);
+    }
+
+    return filtered;
+  })();
 
   // Trocar quantidade
   const handleQuantityChange = (delta: number) =>

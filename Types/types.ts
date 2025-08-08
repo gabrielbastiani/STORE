@@ -1,3 +1,5 @@
+// types.ts (arquivo completo atualizado — substitua o seu por este)
+
 export interface Notification {
     id: string;
     message: string;
@@ -40,6 +42,24 @@ export interface ImageRecord {
     isPrimary: boolean;
 }
 
+/* ---------- Variant / Product ---------- */
+
+export interface VariantAttribute {
+    id?: string;
+    key: string;
+    value: string;
+    status?: StatusProduct;
+    images?: File[];
+    existingImages?: ImageRecord[]
+    newImages?: File[]
+}
+
+export interface VideoInput {
+    url: string;
+    isPrimary?: boolean;
+    thumbnail?: string;
+}
+
 export interface VariantFormData {
     id: string
     sku: string
@@ -66,22 +86,6 @@ export interface VariantFormData {
     mainPromotion?: Promotion;
 }
 
-export interface VariantAttribute {
-    id?: string;
-    key: string;
-    value: string;
-    status?: StatusProduct;
-    images?: File[];
-    existingImages?: ImageRecord[]
-    newImages?: File[]
-}
-
-export interface VideoInput {
-    url: string;
-    isPrimary?: boolean;
-    thumbnail?: string;
-}
-
 export interface ProductVariant {
     id?: string;
     product_id?: string;
@@ -101,6 +105,8 @@ export interface ProductVariant {
     variantAttribute?: { key: string; value: string }[];
     mainPromotion?: Promotion;
 }
+
+/* ---------- Product ---------- */
 
 export interface ProductFormData {
     id?: string;
@@ -138,6 +144,8 @@ export interface ProductFormData {
     parentRelations?: Array<{ childProduct: ProductFormData }>;
     childRelations?: Array<{ childProduct: ProductFormData }>;
 }
+
+/* ---------- Relation / Init ---------- */
 
 export interface RelationFormData {
     parentId?: string;
@@ -180,6 +188,8 @@ export const initialFormData: ProductFormData = {
     buyTogether_id: undefined,
     existingImages: [],
 };
+
+/* ---------- Promotion related ---------- */
 
 export enum ConditionType {
     FIRST_ORDER = 'FIRST_ORDER',
@@ -266,6 +276,8 @@ export type BadgeInput = {
     file: { new(fileBits: BlobPart[], fileName: string, options?: FilePropertyBag): File; prototype: File; }; title: string; imageUrl: string
 }
 
+/* ---------- Promotion DTOs ---------- */
+
 export interface CreatePromotionDto {
     name: string
     description?: string
@@ -306,6 +318,8 @@ export interface BadgeWizardDto {
     file?: File         // caso usuário selecione um novo arquivo
 }
 
+/* ---------- Cart ---------- */
+
 export interface CartItem {
     variant_id: any;
     weight: number;
@@ -328,6 +342,8 @@ export interface Cart {
     total: number;
 }
 
+/* ---------- Address ---------- */
+
 export interface AddressProps {
     customer_id: string;
     street: string;
@@ -341,15 +357,65 @@ export interface AddressProps {
     reference?: string;
 }
 
+/* ---------- Promotion types actually used in the frontend ---------- */
+
+export interface PromotionCoupon {
+    id: string;
+    code: string;
+}
+
+export interface PromotionDisplay {
+    id?: string;
+    title: string;
+    type?: DisplayType | string;
+    content: string;
+}
+
+export interface PromotionUsage {
+    id?: string;
+    customer_id?: string;
+    coupon_code?: string;
+    created_at?: string;
+    // pode adicionar outros campos que o backend retorne sobre uso
+}
+
 export interface Promotion {
     id: string;
     name: string;
     description: string;
     startDate: string;
     endDate: string;
+
+    // flags
     hasCoupon: boolean;
+    multipleCoupons?: boolean;
+    reuseSameCoupon?: boolean;
     cumulative: boolean;
+    priority?: number;
+    status?: string;
+
+    // cupom / limites
+    perUserCouponLimit?: number;   // <--- adicionado
+    totalCouponCount?: number;     // <--- adicionado
+    coupons?: PromotionCoupon[];   // <--- adicionado (lista de cupons)
+    // contagem de uso (se o backend fornecer)
+    promotionUsage?: PromotionUsage[]; // pode ser array de usos
+    usedCount?: number;             // alternativa para backend que já retorna contagem
+    usedCouponsCount?: number;      // alternativa
+
+    // displays / badges
+    displays?: PromotionDisplay[];  // <--- adicionado (promotion_displays)
+    badges?: { id?: string; title?: string; imageUrl?: string }[];
+
+    // relacionamentos (opcionais, dependendo do payload do backend)
+    products?: any[];
+    variantPromotions?: any[];
+    mainVariants?: any[];
+
+    created_at?: string;
 }
+
+/* ---------- Auth / Forms ---------- */
 
 export interface LoginFormData {
     email: string;
