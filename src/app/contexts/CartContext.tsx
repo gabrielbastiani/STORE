@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 import React, {
   createContext,
@@ -21,7 +21,7 @@ interface CartContextValue {
   cart: Cart;
   cartCount: number;
   loading: boolean;
-  addItem: (productId: string, quantity?: number) => Promise<void>;
+  addItem: (productId: string, quantity?: number, variantId?: string | null) => Promise<void>;
   updateItem: (itemId: string, quantity: number) => Promise<void>;
   removeItem: (itemId: string) => Promise<void>;
   clearCart: () => Promise<void>;
@@ -82,50 +82,60 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   }, [cart]);
 
-  // ADD
-  const addItem = async (productId: string, quantity = 1) => {
+  // ADD (aceita variantId opcional que pode ser null)
+  const addItem = async (productId: string, quantity = 1, variantId?: string | null) => {
     setLoading(true);
     try {
       if (cart.id) {
-        const updated = await apiAddItem(productId, quantity);
+        // usuário autenticado -> repassa variantId ao backend
+        const updated = await apiAddItem(productId, quantity, variantId ?? undefined);
         setCart(updated);
       } else {
-        const exists = cart.items.find((i) => i.product_id === productId);
+        // guest -> adicionar localmente; buscar produto para preencher dados
+        // procurar item já existente com mesma product + mesma variant (null tratado)
+        const exists = cart.items.find((i) => i.product_id === productId && (i.variant_id ?? null) === (variantId ?? null));
         let items: CartItem[];
+
         if (exists) {
+          // se já existe item com mesmo product+variant, apenas atualiza qty
           items = cart.items.map((i) =>
-            i.product_id === productId
+            i.product_id === productId && (i.variant_id ?? null) === (variantId ?? null)
               ? { ...i, quantity: i.quantity + quantity }
               : i
           );
         } else {
-          const { data: prod } = await productAPI.get<{
-            id: string;
-            name: string;
-            images: any[];
-            price_per: number;
-            weight: number;
-            length: number;
-            width: number;
-            height: number;
-            variant_id: string;
-          }>(`/product/unique/data?product_id=${productId}`);
-          items = [
-            ...cart.items,
-            {
-              id: crypto.randomUUID(),
-              product_id: productId,
-              name: prod.name,
-              images: prod.images[0].url,
-              price: prod.price_per,
-              quantity,
-              weight: prod.weight,
-              length: prod.length,
-              width: prod.width,
-              height: prod.height,
-              variant_id: prod.variant_id,
-            },
-          ];
+          // buscar product com variantes completas
+          const { data: prod } = await productAPI.get<any>(`/product/unique/data?product_id=${productId}`);
+
+          // se passarem variantId, tentar encontrar os dados da variante
+          let chosenVariant: any = null;
+          if (variantId && Array.isArray(prod?.variants)) {
+            chosenVariant = prod.variants.find((v: any) => v.id === variantId) ?? null;
+          }
+
+          const imageUrl =
+            chosenVariant?.productVariantImage?.[0]?.url ||
+            prod?.images?.[0]?.url ||
+            "";
+
+          const price = chosenVariant?.price_per ?? prod?.price_per ?? 0;
+
+          const newItem: CartItem = {
+            id: crypto.randomUUID(),
+            product_id: productId,
+            name: prod?.name ?? "Produto",
+            images: imageUrl,
+            price,
+            quantity,
+            weight: prod?.weight ?? 0,
+            length: prod?.length ?? 0,
+            width: prod?.width ?? 0,
+            height: prod?.height ?? 0,
+            // mantemos variant_id como null se não houver variante
+            variant_id: chosenVariant?.id ?? null,
+          };
+
+          items = [...cart.items, newItem];
         }
         setCart(recalc(items));
       }

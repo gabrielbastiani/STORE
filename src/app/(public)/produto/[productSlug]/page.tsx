@@ -12,7 +12,6 @@ import { useCart } from "@/app/contexts/CartContext";
 import ViewCounter from "@/app/components/viewCounter";
 import { AuthContextStore } from "@/app/contexts/AuthContextStore";
 
-// Componentes
 import Breadcrumb from "@/app/components/pageProduct/Breadcrumb";
 import ProductGallery from "@/app/components/pageProduct/ProductGallery";
 import ProductInfo from "@/app/components/pageProduct/ProductInfo";
@@ -25,26 +24,24 @@ import PromotionSection from "@/app/components/pageProduct/PromotionSection";
 import ProductTabs from "@/app/components/pageProduct/ProductTabs";
 import ZoomModal from "@/app/components/pageProduct/ZoomModal";
 import LoginModal from "@/app/components/pageProduct/LoginModal";
-import { LoginFormData, ProductFormData, ReviewFormData, VariantFormData } from "Types/types";
 import RelatedProducts from "@/app/components/pageProduct/RelatedProducts";
+import { LoginFormData, ProductFormData, ReviewFormData } from "Types/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 const STORAGE_KEY = "recently_viewed";
 const FAVORITES_KEY = "favorites";
 
 export default function ProductPage({ params }: { params: Promise<{ productSlug: string }> }) {
-
   const router = useRouter();
-
-  const { productSlug } = React.use(params)
+  const { productSlug } = React.use(params);
 
   const { signIn, isAuthenticated, user } = useContext(AuthContextStore);
   const { addItem } = useCart();
 
-  const [product, setProduct] = useState<ProductFormData | null>(null);
+  const [product, setProduct] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
-  const [selectedVariant, setSelectedVariant] = useState<VariantFormData | null>(null);
+  const [selectedVariant, setSelectedVariant] = useState<any | null>(null);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [expandedDescription, setExpandedDescription] = useState<string | null>(null);
@@ -58,47 +55,69 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
   const [reviews, setReviews] = useState<any[]>([]);
   const [togetherQty, setTogetherQty] = useState<Record<string, number>>({});
   const [selectedAttributes, setSelectedAttributes] = useState<Record<string, string>>({});
+  const [attributeImages, setAttributeImages] = useState<Record<string, { value: string; imageUrl: string }[]>>({});
+  const [overrideMainImage, setOverrideMainImage] = useState<string | null>(null);
 
-  // Formulários
+  // Forms (mantive como estava)
   const { register: registerLogin, handleSubmit: handleSubmitLogin, formState: { errors: loginErrors }, reset: resetLogin } = useForm<LoginFormData>();
   const { register: registerReview, handleSubmit: handleSubmitReview, formState: { errors: reviewErrors }, reset: resetReview } = useForm<ReviewFormData>();
 
-  // Carregar produto
   useEffect(() => {
     async function load() {
       const api = setupAPIClient();
+      setLoading(true);
       try {
         const { data } = await api.get(`/product/page?productSlug=${productSlug}`);
-        let prod: ProductFormData = data;
+        const prod: any = data;
 
-        if (data.buyTogether?.products?.length) {
-          const allIds: string[] = data.buyTogether.products;
-          const fetches = allIds.map(id => api.get<ProductFormData>(`/product/buyTogheter?product_id=${id}`));
-          const results = await Promise.all(fetches);
-          const items = results.map(r => r.data);
-
-          prod = {
-            ...prod,
-            buyTogether: {
-              ...data.buyTogether,
-              product: items
-            }
-          };
+        // --- Se buyTogether.products for array de ids -> buscar via batch
+        if (prod.buyTogether?.products && Array.isArray(prod.buyTogether.products) && prod.buyTogether.products.length > 0) {
+          try {
+            const resp = await api.post("/products/batch", { ids: prod.buyTogether.products });
+            prod.buyTogether.product = resp.data || prod.buyTogether.product || [];
+          } catch (err) {
+            console.warn("Batch buyTogether falhou:", err);
+          }
         }
 
         setProduct(prod);
 
+        // Inicializa atributo imagens (mapear imagens dos atributos)
+        const imagesMap: Record<string, Record<string, string>> = {};
+        if (prod?.variants && Array.isArray(prod.variants)) {
+          prod.variants.forEach((v: any) => {
+            v.variantAttribute?.forEach((attr: any) => {
+              if (Array.isArray(attr.variantAttributeImage) && attr.variantAttributeImage.length > 0) {
+                const imgObj = attr.variantAttributeImage.find((i: any) => i.isPrimary) ?? attr.variantAttributeImage[0];
+                if (imgObj?.url) {
+                  const url = API_URL ? `${API_URL}/files/${imgObj.url}` : imgObj.url;
+                  if (!imagesMap[attr.key]) imagesMap[attr.key] = {};
+                  // preferir a primeira imagem encontrada por value
+                  if (!imagesMap[attr.key][attr.value]) imagesMap[attr.key][attr.value] = url;
+                }
+              }
+            });
+          });
+        }
+        const attrImgs: Record<string, { value: string; imageUrl: string }[]> = {};
+        Object.entries(imagesMap).forEach(([key, map]) => {
+          attrImgs[key] = Object.entries(map).map(([value, url]) => ({ value, imageUrl: url }));
+        });
+        setAttributeImages(attrImgs);
+
+        // Seleciona primeira variante por padrão (se existirem)
         if (prod.variants?.length) {
           const first = prod.variants[0];
           setSelectedVariant(first);
           const initAttrs: Record<string, string> = {};
-          first.variantAttributes?.forEach(a => (initAttrs[a.key] = a.value));
+          first.variantAttribute?.forEach((a: any) => (initAttrs[a.key] = a.value));
           setSelectedAttributes(initAttrs);
         }
 
+        // Init togetherQty
         if (prod.buyTogether?.product) {
           const initQty: Record<string, number> = {};
-          prod.buyTogether.product.forEach(p => {
+          (prod.buyTogether.product as any[]).forEach((p: any) => {
             if (p.id) initQty[p.id] = 1;
           });
           setTogetherQty(initQty);
@@ -116,9 +135,13 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
   // Histórico de visualizações
   useEffect(() => {
     if (!product?.id) return;
-    const arr: string[] = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-    arr.push(product.id);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(new Set(arr.reverse())).reverse().slice(-10)));
+    try {
+      const arr: string[] = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+      arr.push(product.id);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(new Set(arr.reverse())).reverse().slice(-10)));
+    } catch (e) {
+      console.warn("Não foi possível salvar histórico de visualizações", e);
+    }
   }, [product]);
 
   // Verificar favoritos
@@ -144,7 +167,7 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
     }
   };
 
-  // Funções de manipulação
+  // Funções de manipulação (favoritos, compartilhamento, reviews, login)
   const toggleFavorite = async () => {
     if (!product?.id) return;
 
@@ -207,7 +230,6 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
     }
 
     try {
-      // Simulação de envio
       const reviewData = {
         product_id: product.id,
         rating: data.rating,
@@ -253,15 +275,14 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
   const formatPrice = (v: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 
-  // Agrupar opções de variantes
-  // Agrupa todos os valores possíveis por atributo
+  // Variants helpers (mesma lógica sua)
   const allOptions = useMemo(() => {
     if (!product?.variants?.length) return {};
 
     const optionsMap: Record<string, Set<string>> = {};
 
-    product.variants.forEach(variant => {
-      variant.variantAttribute?.forEach(attr => {
+    product.variants.forEach((variant: { variantAttribute: any[]; }) => {
+      variant.variantAttribute?.forEach((attr: any) => {
         if (!optionsMap[attr.key]) {
           optionsMap[attr.key] = new Set();
         }
@@ -272,7 +293,6 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
     return optionsMap;
   }, [product]);
 
-  // Calcula opções disponíveis
   const availableOptions = useMemo(() => {
     if (!product?.variants?.length) return {};
 
@@ -282,18 +302,15 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
       availableMap[key] = new Set();
 
       allOptions[key].forEach(value => {
-        const isAvailable = product.variants!.some(variant => {
-          // Verifica se a variante tem o atributo atual
+        const isAvailable = product.variants!.some((variant: { variantAttribute: any[]; }) => {
           const hasCurrentAttr = variant.variantAttribute?.some(
-            a => a.key === key && a.value === value
+            (a: any) => a.key === key && a.value === value
           );
-
           if (!hasCurrentAttr) return false;
 
-          // Verifica compatibilidade com outras seleções
           return Object.entries(selectedAttributes).every(([k, v]) => {
-            if (k === key) return true; // Ignora o atributo atual
-            return variant.variantAttribute?.some(a => a.key === k && a.value === v);
+            if (k === key) return true;
+            return variant.variantAttribute?.some((a: any) => a.key === k && a.value === v);
           });
         });
 
@@ -306,113 +323,89 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
     return availableMap;
   }, [allOptions, selectedAttributes, product]);
 
-  // Selecionar atributo
+  // Ao selecionar atributo (usado pelo VariantsSelector)
   const handleAttributeSelect = (key: string, value: string) => {
-    // Verifica se a opção está disponível
     if (!availableOptions[key]?.has(value)) return;
 
-    // Cria novo conjunto de atributos selecionados
     const newAttributes = { ...selectedAttributes, [key]: value };
 
-    // Encontra variantes compatíveis
-    const matchingVariants = product!.variants!.filter(variant => {
-      return Object.entries(newAttributes).every(([k, v]) =>
-        variant.variantAttribute?.some(a => a.key === k && a.value === v)
-      );
-    });
+    const matchingVariants = product!.variants!.filter((variant: any) =>
+      Object.entries(newAttributes).every(([k, v]) => variant.variantAttribute?.some((a: any) => a.key === k && a.value === v))
+    );
 
-    // Se encontrou exatamente uma variante compatível
     if (matchingVariants.length === 1) {
       const matchedVariant = matchingVariants[0];
       setSelectedVariant(matchedVariant);
-
-      // Sincroniza todos os atributos com a variante encontrada
       const syncedAttributes: Record<string, string> = {};
-      matchedVariant.variantAttribute?.forEach(a => {
-        syncedAttributes[a.key] = a.value;
-      });
-
+      matchedVariant.variantAttribute?.forEach((a: any) => { syncedAttributes[a.key] = a.value; });
       setSelectedAttributes(syncedAttributes);
       setSelectedImageIndex(0);
+      setOverrideMainImage(null); // reset override para mostrar imagem da variante
     } else {
-      // Atualiza apenas o atributo selecionado
       setSelectedAttributes(newAttributes);
     }
   };
 
-  // Imagens atuais
-  const getCurrentImages = () =>
-    selectedVariant?.productVariantImage?.length
-      ? selectedVariant.productVariantImage
-      : product?.images || [];
+  const getCurrentImages = () => {
+    if (overrideMainImage) return [{ url: overrideMainImage }];
+    if (selectedVariant?.productVariantImage?.length) {
+      return selectedVariant.productVariantImage.map((i: any) => ({
+        url: `${API_URL}/files/${i.url}`,
+        alt: i.altText
+      }));
+    }
+    return product?.images?.map((i: any) => ({
+      url: `${API_URL}/files/${i.url}`,
+      alt: i.altText
+    })) || [];
+  };
 
-  const hasDiscount =
-    !!selectedVariant && selectedVariant.price_per! < selectedVariant.price_of!;
-  const discount = hasDiscount
-    ? Math.round(
-      ((selectedVariant.price_of! - selectedVariant.price_per!) /
-        selectedVariant.price_of!) *
-      100
-    )
-    : 0;
-  const stockAvailable =
-    selectedVariant?.stock != null
-      ? selectedVariant.stock
-      : product?.stock ?? 0;
+  // Única fonte de verdade para as imagens
+  const currentImages = getCurrentImages();
+
+  // Stock & discount logic
+  const hasDiscount = !!selectedVariant && selectedVariant.price_per! < selectedVariant.price_of!;
+  const discount = hasDiscount ? Math.round(((selectedVariant.price_of! - selectedVariant.price_per!) / selectedVariant.price_of!) * 100) : 0;
+  const stockAvailable = selectedVariant?.stock != null ? selectedVariant.stock : product?.stock ?? 0;
 
   // Produtos relacionados
-  const relatedProducts: ProductFormData[] = [
-    ...(product?.productRelations?.map(r => r.relatedProduct) || []),
-    ...(product?.parentRelations?.map(r => r.childProduct) || []),
-    ...(product?.childRelations?.map(r => r.childProduct) || []),
+  const relatedProducts: any[] = [
+    ...(product?.productRelations?.map((r: any) => r.relatedProduct) || []),
+    ...(product?.parentRelations?.map((r: any) => r.childProduct) || []),
+    ...(product?.childRelations?.map((r: any) => r.childProduct) || []),
   ];
 
-  // Manipulação de quantidade
+  // Trocar quantidade
   const handleQuantityChange = (delta: number) =>
-    setQuantity(q => Math.min(Math.max(q + delta, 1), stockAvailable));
+    setQuantity(q => Math.min(Math.max(q + delta, 1), (selectedVariant?.stock ?? product?.stock ?? 1)));
 
+  // Adicionar ao carrinho (envia variant_id quando existir)
   const handleAddToCart = async () => {
     if (!product) return;
     setAdding(true);
     try {
-      await addItem(product.id!, quantity);
+      await addItem(product.id, quantity, selectedVariant?.id ?? null);
       toast.success(`"${product.name}" adicionado!`);
       setQuantity(1);
-    } catch {
+    } catch (err) {
       toast.error("Erro ao adicionar.");
     } finally {
       setAdding(false);
     }
   };
 
-  // Compre junto
+  // Compre junto: changeTogetherQty usa stock do item específico
   function changeTogetherQty(id: string, delta: number) {
+    const p = product?.buyTogether?.product?.find((x: any) => x.id === id);
+    const max = p?.stock ?? 999999;
+
     setTogetherQty(prev => {
       const old = prev[id] || 1;
-      const next = Math.min(Math.max(old + delta, 1), product?.stock ?? old);
+      const next = Math.min(Math.max(old + delta, 1), max);
       return { ...prev, [id]: next };
     });
   }
 
-  const addAllTogether = async () => {
-    if (!product?.buyTogether) return;
-    setAdding(true);
-    try {
-      await Promise.all(
-        product.buyTogether.product.map(p => addItem(p.id!, togetherQty[p.id!] || 1)
-        ));
-      toast.success("Todos os itens de 'Compre Junto' adicionados!");
-    } catch {
-      toast.error("Erro ao adicionar grupo.");
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  // Promoção principal
-  const promo = product?.mainPromotion;
-
-  // Loading state
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -421,25 +414,22 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
     );
   }
 
-  // Renderização principal
   return (
     <>
       <NavbarStore />
       <div className="bg-gray-50 min-h-screen p-4">
         <ViewCounter product_id={product?.id!} />
-
         <Breadcrumb product={product!} />
 
         <div className="container mx-auto px-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-
             <ProductGallery
               product={product!}
               selectedVariant={selectedVariant}
               selectedImageIndex={selectedImageIndex}
               setSelectedImageIndex={setSelectedImageIndex}
               setIsZoomed={setIsZoomed}
-              API_URL={API_URL}
+              currentImages={currentImages}
             />
 
             <div className="space-y-6">
@@ -457,6 +447,8 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
                   availableOptions={availableOptions}
                   selectedAttributes={selectedAttributes}
                   handleAttributeSelect={handleAttributeSelect}
+                  attributeImages={attributeImages}
+                  onImageChange={(url: string | null) => setOverrideMainImage(url)}
                 />
               )}
 
@@ -487,19 +479,18 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
             </div>
           </div>
 
-          {product?.buyTogether?.product && (
+          {product?.buyTogether?.product && product.buyTogether.product.length > 0 && (
             <BuyTogether
               buyTogether={product.buyTogether}
               togetherQty={togetherQty}
               changeTogetherQty={changeTogetherQty}
-              addAllTogether={addAllTogether}
               adding={adding}
               API_URL={API_URL}
               onAddItem={addItem}
             />
           )}
 
-          {promo && <PromotionSection promo={promo} />}
+          {product?.mainPromotion && <PromotionSection promo={product.mainPromotion} />}
 
           <ProductTabs
             activeTab={activeTab}
@@ -522,11 +513,10 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
 
         {isZoomed && (
           <ZoomModal
-            currentImages={getCurrentImages()}
+            currentImages={currentImages}
             selectedImageIndex={selectedImageIndex}
-            setSelectedImageIndex={setSelectedImageIndex} // Mantemos assim
+            setSelectedImageIndex={setSelectedImageIndex}
             setIsZoomed={setIsZoomed}
-            API_URL={API_URL}
           />
         )}
 

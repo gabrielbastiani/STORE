@@ -126,7 +126,7 @@ export interface ProductFormData {
     images: ImageRecord[];
     videos: VideoInput[];
     variants: VariantFormData[];
-    productDescriptions: ProductDescription[];
+    productsDescriptions: ProductDescription[];
     metaTitle?: string;
     metaDescription?: string;
     keywords?: string[];
@@ -171,7 +171,7 @@ export const initialFormData: ProductFormData = {
     categories: [],
     images: [],
     videos: [],
-    productDescriptions: [],
+    productsDescriptions: [],
     relations: [],
     variants: [] as VariantFormData[],
     videoLinks: [],

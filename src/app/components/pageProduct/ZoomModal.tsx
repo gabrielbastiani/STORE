@@ -1,16 +1,15 @@
 import Image from "next/image";
-import { X } from "lucide-react";
+import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect } from "react";
 
 interface ZoomModalProps {
   currentImages: {
     url: string;
-    altText?: string;
+    alt?: string; // Corrigido: altText para alt (para alinhar com ProductPage)
   }[];
   selectedImageIndex: number;
-  setSelectedImageIndex: (index: number) => void; // Tipo corrigido
+  setSelectedImageIndex: (index: number) => void;
   setIsZoomed: (zoomed: boolean) => void;
-  API_URL?: string;
 }
 
 export default function ZoomModal({
@@ -18,9 +17,8 @@ export default function ZoomModal({
   selectedImageIndex,
   setSelectedImageIndex,
   setIsZoomed,
-  API_URL
 }: ZoomModalProps) {
-  // Funções de navegação simplificadas
+  // Funções de navegação
   const goToPrevImage = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     const newIndex = selectedImageIndex === 0 ? currentImages.length - 1 : selectedImageIndex - 1;
@@ -33,7 +31,7 @@ export default function ZoomModal({
     setSelectedImageIndex(newIndex);
   };
 
-  // Fechar ao pressionar Esc
+  // Fechar ao pressionar Esc ou setas
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setIsZoomed(false);
@@ -43,7 +41,7 @@ export default function ZoomModal({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedImageIndex, currentImages.length]); // Dependências adicionadas
+  }, [selectedImageIndex, currentImages.length]);
 
   // Fechar ao clicar no fundo
   const handleBackgroundClick = (e: React.MouseEvent) => {
@@ -75,9 +73,7 @@ export default function ZoomModal({
               className="absolute left-4 top-1/2 -translate-y-1/2 bg-black bg-opacity-50 text-white rounded-full p-3 z-10 hover:bg-opacity-75 transition-all"
               aria-label="Imagem anterior"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" viewBox="0 0 24 24">
-                <path fill="currentColor" d="M15.41 7.41L14 6l-6 6l6 6l1.41-1.41L10.83 12z" />
-              </svg>
+              <ChevronLeft className="w-6 h-6" />
             </button>
 
             <button
@@ -85,9 +81,7 @@ export default function ZoomModal({
               className="absolute right-4 top-1/2 -translate-y-1/2 bg-black bg-opacity-50 text-white rounded-full p-3 z-10 hover:bg-opacity-75 transition-all"
               aria-label="Próxima imagem"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" viewBox="0 0 24 24">
-                <path fill="currentColor" d="M10 6L8.59 7.41L13.17 12l-4.58 4.59L10 18l6-6z" />
-              </svg>
+              <ChevronRight className="w-6 h-6" />
             </button>
           </>
         )}
@@ -103,8 +97,8 @@ export default function ZoomModal({
         <div className="relative w-full h-full flex items-center justify-center">
           {currentImages[selectedImageIndex] ? (
             <Image
-              src={`${API_URL}/files/${currentImages[selectedImageIndex].url}`}
-              alt={currentImages[selectedImageIndex].altText || "Visualização ampliada do produto"}
+              src={currentImages[selectedImageIndex].url} // URL já vem formatada
+              alt={currentImages[selectedImageIndex].alt || "Visualização ampliada do produto"}
               fill
               className="object-contain cursor-zoom-out"
               onClick={() => setIsZoomed(false)}

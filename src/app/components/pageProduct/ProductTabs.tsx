@@ -1,10 +1,10 @@
 import React from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { ProductFormData, ProductVariant } from "Types/types"; 
 import ReviewForm from "./ReviewForm";
 import ReviewList from "./ReviewList";
 import { FieldErrors, UseFormRegister, UseFormHandleSubmit } from "react-hook-form";
-import { ReviewFormData } from "Types/types"; 
+import { ReviewFormData, VariantFormData } from "Types/types"; 
+import { ProductFormData } from "Types/types"; 
 
 interface ProductTabsProps {
   activeTab: "description" | "specifications" | "reviews";
@@ -12,7 +12,7 @@ interface ProductTabsProps {
   product: ProductFormData;
   expandedDescription: string | null;
   setExpandedDescription: (id: string | null) => void;
-  selectedVariant: ProductVariant | null;
+  selectedVariant: VariantFormData | null;
   reviews: any[];
   showReviewForm: boolean;
   setShowReviewForm: (show: boolean) => void;
@@ -50,11 +50,10 @@ export default function ProductTabs({
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-6 py-4 font-medium border-b-2 text-sm md:text-base ${
-                activeTab === tab
+              className={`px-6 py-4 font-medium border-b-2 text-sm md:text-base ${activeTab === tab
                   ? "border-blue-600 text-blue-600"
                   : "border-transparent text-gray-600 hover:text-gray-800"
-              }`}
+                }`}
             >
               {tab === "description" && "Descrição"}
               {tab === "specifications" && "Especificações"}
@@ -63,19 +62,17 @@ export default function ProductTabs({
           ))}
         </nav>
       </div>
-      
+
       {/* Conteúdo das abas */}
       <div className="p-6">
         {/* Aba: Descrição */}
         {activeTab === "description" && (
           <div className="space-y-6">
-            {product.productDescriptions?.map((desc) => (
+            {product.productsDescriptions?.map((desc: any) => (
               <div key={desc.id} className="space-y-3">
                 <button
                   onClick={() =>
-                    setExpandedDescription(
-                      expandedDescription === desc.id ? null : desc.id
-                    )
+                    setExpandedDescription(expandedDescription === desc.id ? null : desc.id)
                   }
                   className="flex items-center justify-between w-full text-left"
                 >
@@ -90,7 +87,7 @@ export default function ProductTabs({
                 </button>
                 {expandedDescription === desc.id && (
                   <div
-                    className="prose prose-blue max-w-none"
+                    className="prose max-w-none"
                     dangerouslySetInnerHTML={{ __html: desc.description }}
                   />
                 )}
@@ -133,7 +130,7 @@ export default function ProductTabs({
                 </div>
               </div>
             </div>
-            
+
             {selectedVariant && (
               <div className="space-y-3">
                 <h3 className="font-semibold text-gray-900">
@@ -170,10 +167,10 @@ export default function ProductTabs({
                 setShowReviewForm={setShowReviewForm}
               />
             )}
-            
+
             {/* Lista de avaliações */}
-            <ReviewList 
-              reviews={reviews} 
+            <ReviewList
+              reviews={reviews}
               showReviewForm={showReviewForm}
               setShowReviewForm={setShowReviewForm}
               isAuthenticated={isAuthenticated}

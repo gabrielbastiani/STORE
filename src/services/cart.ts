@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Cart } from 'Types/types'; 
+import { Cart } from 'Types/types';
 
 const API = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL,
@@ -11,8 +11,21 @@ export async function fetchCart(): Promise<Cart> {
   return data;
 }
 
-export async function apiAddItem(productId: string, quantity = 1): Promise<Cart> {
-  const { data } = await API.post<Cart>('/cart/items', { product_id: productId, quantity });
+/**
+ * Adiciona item ao carrinho.
+ * Agora aceita variantId opcional e inclui variant_id no body quando fornecido.
+ */
+export async function apiAddItem(productId: string, quantity = 1, variantId?: string | undefined): Promise<Cart> {
+  const body: Record<string, any> = {
+    product_id: productId,
+    quantity,
+  };
+
+  if (variantId) {
+    body.variant_id = variantId;
+  }
+
+  const { data } = await API.post<Cart>('/cart/items', body);
   return data;
 }
 

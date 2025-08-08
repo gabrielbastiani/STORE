@@ -11,10 +11,9 @@ interface RelatedProductsSectionProps {
 
 export default function RelatedProductsSection({ products }: RelatedProductsSectionProps) {
 
-    if (!products || products.length === 0) return null;
+   /*  console.log(products) */
 
-    // Mostrar apenas 3 produtos relacionados
-    const displayedProducts = products.slice(0, 3);
+    if (!products || products.length === 0) return null;
 
     const formatPrice = (v: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
@@ -24,7 +23,7 @@ export default function RelatedProductsSection({ products }: RelatedProductsSect
             <h3 className="text-lg font-semibold text-gray-800 mb-4">Produtos Relacionados</h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {displayedProducts.map((product) => (
+                {products.map((product) => (
                     <div
                         key={product.id}
                         className="flex items-start gap-4 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"

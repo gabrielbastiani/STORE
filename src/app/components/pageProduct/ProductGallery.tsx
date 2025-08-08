@@ -9,7 +9,7 @@ interface ProductGalleryProps {
   selectedImageIndex: number;
   setSelectedImageIndex: (index: number) => void;
   setIsZoomed: (value: boolean) => void;
-  API_URL: string | undefined;
+  currentImages: { url: string; alt?: string }[];
 }
 
 export default function ProductGallery({
@@ -18,19 +18,11 @@ export default function ProductGallery({
   selectedImageIndex,
   setSelectedImageIndex,
   setIsZoomed,
-  API_URL
+  currentImages
 }: ProductGalleryProps) {
 
   const [selectedVideoIndex, setSelectedVideoIndex] = useState(0);
 
-  const getCurrentImages = () => {
-    if (selectedVariant?.productVariantImage && selectedVariant.productVariantImage.length > 0) {
-      return selectedVariant.productVariantImage;
-    }
-    return product?.images || [];
-  };
-
-  const currentImages = getCurrentImages();
   const hasDiscount = selectedVariant && selectedVariant.price_per! < selectedVariant.price_of!;
   const discount = hasDiscount
     ? Math.round(
@@ -95,8 +87,8 @@ export default function ProductGallery({
         <div className="aspect-square relative">
           {currentImages.length ? (
             <Image
-              src={`${API_URL}/files/${currentImages[selectedImageIndex].url}`}
-              alt={currentImages[selectedImageIndex].altText || product.name}
+              src={currentImages[selectedImageIndex]?.url || ''}
+              alt={currentImages[selectedImageIndex]?.alt || product.name}
               fill
               className="object-contain cursor-zoom-in p-4"
               onClick={() => setIsZoomed(true)}
@@ -137,8 +129,8 @@ export default function ProductGallery({
                 }`}
             >
               <Image
-                src={`${API_URL}/files/${img.url}`}
-                alt={img.altText || `Imagem ${idx + 1} do produto`}
+                src={img.url}
+                alt={img.alt || `Imagem ${idx + 1} do produto`}
                 width={80}
                 height={80}
                 className="object-contain w-full h-full"

@@ -1,6 +1,6 @@
 import { Star } from "lucide-react";
 import { FieldErrors, UseFormRegister, UseFormHandleSubmit } from "react-hook-form";
-import { ReviewFormData } from "Types/types"; 
+import { ReviewFormData } from "Types/types";
 import React from "react";
 
 interface ReviewFormProps {
@@ -35,7 +35,9 @@ export default function ReviewForm({
                 type="button"
                 onClick={() => {
                   setRating(star);
-                  registerReview('rating').onChange(star);
+                  registerReview('rating', { value: star }).onChange({
+                    target: { name: 'rating', value: star }
+                  });
                 }}
                 className="text-yellow-400 focus:outline-none"
               >
