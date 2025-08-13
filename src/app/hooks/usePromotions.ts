@@ -1,4 +1,3 @@
-// src/app/hooks/usePromotions.ts
 'use client';
 
 import { useEffect, useState } from 'react';

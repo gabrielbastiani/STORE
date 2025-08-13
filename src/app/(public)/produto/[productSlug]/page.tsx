@@ -25,7 +25,7 @@ import ProductTabs from "@/app/components/pageProduct/ProductTabs";
 import ZoomModal from "@/app/components/pageProduct/ZoomModal";
 import LoginModal from "@/app/components/pageProduct/LoginModal";
 import RelatedProducts from "@/app/components/pageProduct/RelatedProducts";
-import { LoginFormData, ProductFormData, ReviewFormData } from "Types/types";
+import { LoginFormData, ReviewFormData } from "Types/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 const STORAGE_KEY = "recently_viewed";
@@ -36,7 +36,7 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
   const { productSlug } = React.use(params);
 
   const { signIn, isAuthenticated, user } = useContext(AuthContextStore);
-  const { addItem } = useCart();
+  const { addItem, cart } = useCart();
 
   const [product, setProduct] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,7 +58,7 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
   const [attributeImages, setAttributeImages] = useState<Record<string, { value: string; imageUrl: string }[]>>({});
   const [overrideMainImage, setOverrideMainImage] = useState<string | null>(null);
 
-  // Forms (mantive como estava)
+  // Forms
   const { register: registerLogin, handleSubmit: handleSubmitLogin, formState: { errors: loginErrors }, reset: resetLogin } = useForm<LoginFormData>();
   const { register: registerReview, handleSubmit: handleSubmitReview, formState: { errors: reviewErrors }, reset: resetReview } = useForm<ReviewFormData>();
 
@@ -92,7 +92,6 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
                 if (imgObj?.url) {
                   const url = API_URL ? `${API_URL}/files/${imgObj.url}` : imgObj.url;
                   if (!imagesMap[attr.key]) imagesMap[attr.key] = {};
-                  // preferir a primeira imagem encontrada por value
                   if (!imagesMap[attr.key][attr.value]) imagesMap[attr.key][attr.value] = url;
                 }
               }
@@ -167,7 +166,7 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
     }
   };
 
-  // Funções de manipulação (favoritos, compartilhamento, reviews, login)
+  // Manipulação favoritos, compartilhamento, reviews, login
   const toggleFavorite = async () => {
     if (!product?.id) return;
 
@@ -275,7 +274,7 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
   const formatPrice = (v: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 
-  // Variants helpers (mesma lógica sua)
+  // Variants helpers
   const allOptions = useMemo(() => {
     if (!product?.variants?.length) return {};
 
@@ -368,15 +367,12 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
   const discount = hasDiscount ? Math.round(((selectedVariant.price_of! - selectedVariant.price_per!) / selectedVariant.price_of!) * 100) : 0;
   const stockAvailable = selectedVariant?.stock != null ? selectedVariant.stock : product?.stock ?? 0;
 
-  // Produtos relacionados
-  // --- CORREÇÃO: reunir todas as possíveis referências, filtrar inválidos,
-  // remover o produto atual e eliminar duplicatas por id
+  // Produtos relacionados (mesma lógica consolidada)
   const relatedProducts: any[] = (() => {
     if (!product) return [];
 
     const gathered: any[] = [];
 
-    // Pode vir em productRelations / parentRelations / childRelations
     if (Array.isArray(product.productRelations)) {
       product.productRelations.forEach((r: any) => {
         if (r.relatedProduct) gathered.push(r.relatedProduct);
@@ -401,8 +397,6 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
       });
     }
 
-    // Também manter compatibilidade com os formatos originais que você usou
-    // (caso os nomes dos campos sejam exatamente esses)
     try {
       const fromDirectMaps = [
         ...(product.productRelations?.map((r: any) => r.relatedProduct) || []),
@@ -502,6 +496,10 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
                   handleAttributeSelect={handleAttributeSelect}
                   attributeImages={attributeImages}
                   onImageChange={(url: string | null) => setOverrideMainImage(url)}
+                  // Novas props para exibir promo de variante dentro do selector
+                  selectedVariant={selectedVariant}
+                  product={product}
+                  formatPrice={formatPrice}
                 />
               )}
 
@@ -542,8 +540,6 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
               onAddItem={addItem}
             />
           )}
-
-          {product?.mainPromotion && <PromotionSection promo={product.mainPromotion} />}
 
           <ProductTabs
             activeTab={activeTab}

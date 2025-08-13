@@ -7,6 +7,8 @@ import Link from "next/link";
 import Image from "next/image";
 import noImage from "../../../../public/no-image.png";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
 type ProductWithRelations = {
     id: string;
     name: string;
@@ -54,7 +56,7 @@ export default function SearchPage() {
                     <li key={p.id} className="border p-4 rounded">
                         <Link href={`/produto/${p.slug}`} className="block">
                             <Image
-                                src={p.images[0]?.url ? `${process.env.NEXT_PUBLIC_API_URL}/files/${p.images[0].url}` : noImage}
+                                src={p.images[0]?.url ? `${API_URL}/files/${p.images[0].url}` : noImage}
                                 alt={p.name}
                                 width={200}
                                 height={200}

@@ -245,11 +245,13 @@ export default function CartPage() {
                 className="relative flex items-center bg-white p-4 rounded shadow"
               >
                 {/* Badge */}
-                {badgeMap[item.variant_id] && (
-                  <img
-                    src={badgeMap[item.variant_id].imageUrl}
-                    alt={badgeMap[item.variant_id].title}
-                    title={badgeMap[item.variant_id].title}
+                {badgeMap[item.variant_id || ""] && (
+                  <Image
+                    src={`${API_URL}/files/${badgeMap[item.variant_id || ""].imageUrl}`}
+                    width={120}
+                    height={120}
+                    alt={badgeMap[item.variant_id || ""].title}
+                    title={badgeMap[item.variant_id || ""].title}
                     className="absolute top-2 left-2 w-8 h-8 object-contain"
                   />
                 )}
