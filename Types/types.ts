@@ -497,6 +497,10 @@ export type PreloadedLookupIncoming = {
   variants?: Record<string, { sku?: string | null | undefined; name?: string | null | undefined }>;
 } | null | undefined;
 
-/* -------------------- Export default (se quiser importar com path curto) -------------------- */
+export type ReviewFormData = {
+  rating: number | string;
+  comment?: string;
+};
+
 
 export default {};

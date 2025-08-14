@@ -69,7 +69,7 @@ export default function ProductPromotion({ promo, type }: ProductPromotionProps)
             <PromotionRulesModal
                 open={modalOpen}
                 onClose={() => setModalOpen(false)}
-                promo={promo}
+                promo={promo}// @ts-ignore
                 promotionType={type}
             />
         </div>

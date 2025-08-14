@@ -8,8 +8,8 @@ export default function Benefits() {
           <Truck className="w-5 h-5 text-green-600" />
         </div>
         <div>
-          <p className="font-medium text-gray-800">Frete Grátis</p>
-          <p>Para compras acima de R$ 299</p>
+          <p className="font-medium text-gray-800">Fretes</p>
+          <p>Entregamos em todo o territorio Brasileiro</p>
         </div>
       </div>
       

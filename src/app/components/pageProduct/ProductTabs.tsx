@@ -2,9 +2,9 @@ import React from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import ReviewForm from "./ReviewForm";
 import ReviewList from "./ReviewList";
-import { FieldErrors, UseFormRegister, UseFormHandleSubmit } from "react-hook-form";
-import { ReviewFormData, VariantFormData } from "Types/types"; 
-import { ProductFormData } from "Types/types"; 
+import { FieldErrors, UseFormRegister, UseFormHandleSubmit, Control } from "react-hook-form";
+import { ReviewFormData, VariantFormData } from "Types/types";
+import { ProductFormData } from "Types/types";
 
 interface ProductTabsProps {
   activeTab: "description" | "specifications" | "reviews";
@@ -22,6 +22,8 @@ interface ProductTabsProps {
   reviewErrors: FieldErrors<ReviewFormData>;
   submitReview: (data: ReviewFormData) => void;
   setShowLoginModal: (show: boolean) => void;
+  control: Control<ReviewFormData>;
+  watch?: any;
 }
 
 export default function ProductTabs({
@@ -39,11 +41,16 @@ export default function ProductTabs({
   handleSubmitReview,
   reviewErrors,
   submitReview,
-  setShowLoginModal
+  setShowLoginModal,
+  control,
+  watch
 }: ProductTabsProps) {
+
+  // Filtra apenas avaliações aprovadas para mostrar o contador na aba
+  const approvedReviews = reviews.filter(review => review.status === 'APPROVED');
+
   return (
     <div className="mt-12 bg-white rounded-lg border border-gray-200">
-      {/* Navegação por abas */}
       <div className="border-b border-gray-200">
         <nav className="flex">
           {(["description", "specifications", "reviews"] as const).map((tab) => (
@@ -51,21 +58,19 @@ export default function ProductTabs({
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={`px-6 py-4 font-medium border-b-2 text-sm md:text-base ${activeTab === tab
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-gray-600 hover:text-gray-800"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-gray-600 hover:text-gray-800"
                 }`}
             >
               {tab === "description" && "Descrição"}
               {tab === "specifications" && "Especificações"}
-              {tab === "reviews" && `Avaliações (${reviews.length})`}
+              {tab === "reviews" && `Avaliações (${approvedReviews.length})`}
             </button>
           ))}
         </nav>
       </div>
 
-      {/* Conteúdo das abas */}
       <div className="p-6">
-        {/* Aba: Descrição */}
         {activeTab === "description" && (
           <div className="space-y-6">
             {product.productsDescriptions?.map((desc: any) => (
@@ -96,7 +101,6 @@ export default function ProductTabs({
           </div>
         )}
 
-        {/* Aba: Especificações */}
         {activeTab === "specifications" && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-3">
@@ -154,10 +158,8 @@ export default function ProductTabs({
           </div>
         )}
 
-        {/* Aba: Avaliações */}
         {activeTab === "reviews" && (
           <div className="space-y-6">
-            {/* Formulário de avaliação */}
             {showReviewForm && isAuthenticated && (
               <ReviewForm
                 registerReview={registerReview}
@@ -165,12 +167,12 @@ export default function ProductTabs({
                 reviewErrors={reviewErrors}
                 submitReview={submitReview}
                 setShowReviewForm={setShowReviewForm}
+                control={control}
               />
             )}
 
-            {/* Lista de avaliações */}
             <ReviewList
-              reviews={reviews}
+              productId={product.id || ""}
               showReviewForm={showReviewForm}
               setShowReviewForm={setShowReviewForm}
               isAuthenticated={isAuthenticated}

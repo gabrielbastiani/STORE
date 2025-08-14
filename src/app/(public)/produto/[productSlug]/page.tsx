@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo, useContext } from "react";
+import React, { useEffect, useState, useMemo, useContext, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "react-toastify";
 import { useForm } from "react-hook-form";
@@ -20,23 +20,24 @@ import QuantitySelector from "@/app/components/pageProduct/QuantitySelector";
 import ActionButtons from "@/app/components/pageProduct/ActionButtons";
 import Benefits from "@/app/components/pageProduct/Benefits";
 import BuyTogether from "@/app/components/pageProduct/BuyTogether";
-import PromotionSection from "@/app/components/pageProduct/PromotionSection";
 import ProductTabs from "@/app/components/pageProduct/ProductTabs";
 import ZoomModal from "@/app/components/pageProduct/ZoomModal";
 import LoginModal from "@/app/components/pageProduct/LoginModal";
 import RelatedProducts from "@/app/components/pageProduct/RelatedProducts";
 import { LoginFormData, ReviewFormData } from "Types/types";
+import ShippingEstimator, { ShippingOption } from "@/app/components/pageProduct/ShippingEstimator";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 const STORAGE_KEY = "recently_viewed";
 const FAVORITES_KEY = "favorites";
 
 export default function ProductPage({ params }: { params: Promise<{ productSlug: string }> }) {
+
   const router = useRouter();
   const { productSlug } = React.use(params);
 
   const { signIn, isAuthenticated, user } = useContext(AuthContextStore);
-  const { addItem, cart } = useCart();
+  const { addItem } = useCart();
 
   const [product, setProduct] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,10 +58,25 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
   const [selectedAttributes, setSelectedAttributes] = useState<Record<string, string>>({});
   const [attributeImages, setAttributeImages] = useState<Record<string, { value: string; imageUrl: string }[]>>({});
   const [overrideMainImage, setOverrideMainImage] = useState<string | null>(null);
+  const [productShipping, setProductShipping] = useState<ShippingOption | null>(null);
+
+  const handleProductShipping = useCallback((opt: React.SetStateAction<ShippingOption | null>) => setProductShipping(opt), [setProductShipping]);
 
   // Forms
   const { register: registerLogin, handleSubmit: handleSubmitLogin, formState: { errors: loginErrors }, reset: resetLogin } = useForm<LoginFormData>();
-  const { register: registerReview, handleSubmit: handleSubmitReview, formState: { errors: reviewErrors }, reset: resetReview } = useForm<ReviewFormData>();
+  const {
+    register: registerReview,
+    handleSubmit: handleSubmitReview,
+    formState: { errors: reviewErrors },
+    reset: resetReview,
+    control,
+    watch
+  } = useForm<ReviewFormData>({
+    defaultValues: {
+      rating: 0,
+      comment: ""
+    }
+  });
 
   useEffect(() => {
     async function load() {
@@ -94,8 +110,7 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
                   if (!imagesMap[attr.key]) imagesMap[attr.key] = {};
                   if (!imagesMap[attr.key][attr.value]) imagesMap[attr.key][attr.value] = url;
                 }
-              }
-            });
+              }})
           });
         }
         const attrImgs: Record<string, { value: string; imageUrl: string }[]> = {};
@@ -120,6 +135,24 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
             if (p.id) initQty[p.id] = 1;
           });
           setTogetherQty(initQty);
+        }
+
+        // se o servidor já retornar avaliações, normaliza para número
+        if (Array.isArray(prod.reviews)) {
+          const ratingEnumToNumber = (r: any) => {
+            if (typeof r === 'number') return r;
+            if (!r) return 0;
+            switch (String(r).toUpperCase()) {
+              case 'ONE': return 1;
+              case 'TWO': return 2;
+              case 'THREE': return 3;
+              case 'FOUR': return 4;
+              case 'FIVE': return 5;
+              default: return 0;
+            }
+          };
+          const normalized = prod.reviews.map((rv: any) => ({ ...rv, rating: ratingEnumToNumber(rv.rating) }));
+          setReviews(normalized);
         }
       } catch (err) {
         console.error(err);
@@ -158,7 +191,7 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
   const checkServerFavorites = async () => {
     try {
       const api = setupAPIClient();
-      const response = await api.get(`/favorite?customer_id=${user?.id}`);
+      const response = await api.get(`/favorite/customer/pageProduct?customer_id=${user?.id}`);
       const serverFavorites = response.data.map((fav: any) => fav.product_id);
       setIsFavorite(serverFavorites.includes(product?.id));
     } catch (error) {
@@ -185,9 +218,12 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
 
       if (isAuthenticated) {
         if (newIsFavorite) {
-          await api.post('/favorite/create', { product_id: product.id });
+          await api.post('/favorite/create', {
+            customer_id: user?.id,
+            product_id: product.id
+          });
         } else {
-          await api.delete('/favorite/delete', { data: { product_id: product.id } });
+          await api.delete(`/favorite/delete?customer_id=${user?.id}&product_id=${product.id}`);
         }
       }
     } catch (error) {
@@ -222,7 +258,11 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
     setShowShareMenu(false);
   };
 
+  // dentro do ProductPage component (substitua a função submitReview existente)
   const submitReview = async (data: ReviewFormData) => {
+    console.log("submitReview payload:", data); // <<< importante para debug
+    const api = setupAPIClient();
+
     if (!isAuthenticated || !product?.id) {
       setShowLoginModal(true);
       return;
@@ -231,15 +271,38 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
     try {
       const reviewData = {
         product_id: product.id,
-        rating: data.rating,
+        rating: data.rating, // número 1-5
         comment: data.comment,
-        user: { name: user?.name || "Usuário" },
-        created_at: new Date().toISOString()
+        customer_id: user?.id,
+        nameCustomer: user?.name
       };
 
-      setReviews(prev => [...prev, reviewData]);
+      const response = await api.post('/review/create', reviewData);
+      const createdReview = response.data;
+
+      // converte enum do servidor para número para exibir localmente
+      const ratingEnumToNumber = (r: any) => {
+        if (typeof r === 'number') return r;
+        if (!r) return 0;
+        switch (String(r).toUpperCase()) {
+          case 'ONE': return 1;
+          case 'TWO': return 2;
+          case 'THREE': return 3;
+          case 'FOUR': return 4;
+          case 'FIVE': return 5;
+          default: return 0;
+        }
+      };
+
+      const normalised = {
+        ...createdReview,
+        rating: ratingEnumToNumber(createdReview.rating),
+        user: { name: createdReview.nameCustomer || user?.name }
+      };
+
+      setReviews(prev => [...prev, normalised]);
       toast.success('Avaliação enviada com sucesso!');
-      resetReview();
+      resetReview(); // limpa o form
       setShowReviewForm(false);
     } catch (error) {
       console.error("Erro ao enviar avaliação:", error);
@@ -496,7 +559,6 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
                   handleAttributeSelect={handleAttributeSelect}
                   attributeImages={attributeImages}
                   onImageChange={(url: string | null) => setOverrideMainImage(url)}
-                  // Novas props para exibir promo de variante dentro do selector
                   selectedVariant={selectedVariant}
                   product={product}
                   formatPrice={formatPrice}
@@ -509,16 +571,44 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
 
               <QuantitySelector
                 quantity={quantity}
-                handleQuantityChange={handleQuantityChange}
-                stockAvailable={stockAvailable}
+                handleQuantityChange={(delta: number) =>
+                  setQuantity(q => Math.min(Math.max(q + delta, 1), (selectedVariant?.stock ?? product?.stock ?? 1)))
+                }
+                stockAvailable={selectedVariant?.stock ?? product?.stock ?? 0}
               />
+
+              <div className="mt-4">
+                <ShippingEstimator
+                  product={product}
+                  selectedVariant={selectedVariant}
+                  quantity={quantity}
+                  onShippingSelect={handleProductShipping}
+                />
+                {productShipping && (
+                  <div className="mt-2 text-sm text-gray-700">
+                    <strong>Frete estimado:</strong> {formatPrice(productShipping.price)} ·{" "}
+                    <span className="text-gray-500">{productShipping.deliveryTime}</span>
+                  </div>
+                )}
+              </div>
 
               <ActionButtons
                 product={product!}
                 quantity={quantity}
-                stockAvailable={stockAvailable}
+                stockAvailable={selectedVariant?.stock ?? product?.stock ?? 0}
                 adding={adding}
-                handleAddToCart={handleAddToCart}
+                handleAddToCart={async () => {
+                  setAdding(true);
+                  try {
+                    await addItem(product.id, quantity, selectedVariant?.id ?? null);
+                    toast.success(`"${product.name}" adicionado!`);
+                    setQuantity(1);
+                  } catch (err) {
+                    toast.error("Erro ao adicionar.");
+                  } finally {
+                    setAdding(false);
+                  }
+                }}
                 isFavorite={isFavorite}
                 toggleFavorite={toggleFavorite}
                 showShareMenu={showShareMenu}
@@ -557,6 +647,8 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
             reviewErrors={reviewErrors}
             submitReview={submitReview}
             setShowLoginModal={setShowLoginModal}
+            control={control}
+            watch={watch}
           />
         </div>
 
