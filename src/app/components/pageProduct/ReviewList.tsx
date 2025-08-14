@@ -192,7 +192,7 @@ export default function ReviewList({
             <button
               onClick={() => handlePageChange(pagination.currentPage - 1)}
               disabled={!pagination.hasPreviousPage}
-              className={`flex items-center px-4 py-2 rounded-md ${pagination.hasPreviousPage
+              className={`text-black flex items-center px-4 py-2 rounded-md ${pagination.hasPreviousPage
                 ? 'bg-gray-200 hover:bg-gray-300'
                 : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                 }`}
@@ -218,7 +218,7 @@ export default function ReviewList({
                   <button
                     key={pageNum}
                     onClick={() => handlePageChange(pageNum)}
-                    className={`w-8 h-8 rounded-full ${pagination.currentPage === pageNum
+                    className={`text-gray-500 w-8 h-8 rounded-full ${pagination.currentPage === pageNum
                       ? 'bg-orange-600 text-white'
                       : 'bg-gray-200 hover:bg-gray-300'
                       }`}
@@ -248,7 +248,7 @@ export default function ReviewList({
             <button
               onClick={() => handlePageChange(pagination.currentPage + 1)}
               disabled={!pagination.hasNextPage}
-              className={`flex items-center px-4 py-2 rounded-md ${pagination.hasNextPage
+              className={`text-black flex items-center px-4 py-2 rounded-md ${pagination.hasNextPage
                 ? 'bg-gray-200 hover:bg-gray-300'
                 : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                 }`}
