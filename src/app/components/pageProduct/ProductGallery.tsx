@@ -104,13 +104,13 @@ export default function ProductGallery({
           <>
             <button
               onClick={(e) => goToPrevImage(e)}
-              className="absolute left-4 top-1/2 -translate-y-1/2 bg-white p-2 rounded-full shadow opacity-0 group-hover:opacity-100 transition"
+              className="text-black absolute left-4 top-1/2 -translate-y-1/2 bg-white p-2 rounded-full shadow opacity-0 group-hover:opacity-100 transition"
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
             <button
               onClick={(e) => goToNextImage(e)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 bg-white p-2 rounded-full shadow opacity-0 group-hover:opacity-100 transition"
+              className="text-black absolute right-4 top-1/2 -translate-y-1/2 bg-white p-2 rounded-full shadow opacity-0 group-hover:opacity-100 transition"
             >
               <ChevronRight className="w-5 h-5" />
             </button>
