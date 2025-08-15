@@ -115,6 +115,7 @@ export interface ProductSummary {
 }
 
 export interface ProductFormData {
+  primaryImage?: string;
   featuredProducts?: ProductSummary[]; // corrigido: opcional
   id?: string;
   relations?: any;
@@ -185,6 +186,7 @@ export const initialFormData: ProductFormData = {
   buyTogether_id: undefined,
   existingImages: [],
   featuredProducts: [],
+  primaryImage: ""
 };
 
 /* -------------------- Relation / form helpers -------------------- */
