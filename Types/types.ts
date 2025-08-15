@@ -377,6 +377,11 @@ export interface CartItem {
   images?: string | string[];
   price: number;
   quantity: number;
+  variant_sku?: string | null;
+  variant_name?: string | null;
+  selectedOptions?: SelectedOption[];
+  attributeImages?: string[];
+  variantImage?: string | null;
 }
 
 export interface Cart {
@@ -472,11 +477,6 @@ export interface LoginFormData {
   password: string;
 }
 
-export interface ReviewFormData {
-  rating: number;
-  comment?: string;
-}
-
 /* -------------------- Lookup helper types (frontend) -------------------- */
 
 /**
@@ -501,6 +501,12 @@ export type ReviewFormData = {
   rating: number | string;
   comment?: string;
 };
+
+export interface SelectedOption {
+  name: string;
+  value: string;
+  image?: string | null;
+}
 
 
 export default {};

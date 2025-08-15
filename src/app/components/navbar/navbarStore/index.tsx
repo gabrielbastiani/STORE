@@ -31,7 +31,7 @@ import { toast } from "react-toastify";
 import noImage from "../../../../../public/no-image.png";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL!;
-const HISTORY_KEY = "@store:searchHistory";
+const HISTORY_KEY = "storeSearchHistory";
 
 type MenuItemDTO = {
     id: string;
@@ -203,8 +203,17 @@ export function NavbarStore() {
         setHistory([]);
     };
 
+    function removerAcentos(s: any) {
+            return s.normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, "")
+                .toLowerCase()
+                .replace(/ +/g, "-")
+                .replace(/-{2,}/g, "-")
+                .replace(/[/]/g, "-");
+        }
+
     const buildUrl = (item: MenuItemDTO) => {
-        if (item.type === "CATEGORY") return `/category/${item.category_id}`;
+        if (item.type === "CATEGORY") return `/categoria/${removerAcentos(item.label)}`;
         if (item.type === "CUSTOM_PAGE") return `/pages/${item.customPageSlug}`;
         if (item.type === "INTERNAL_LINK") return item.url!;
         return item.url!;
@@ -552,7 +561,7 @@ export function NavbarStore() {
 
                         {/* total ao lado */}
                         <span className="ml-2 font-semibold text-sm">
-                            {cartLoading ? "R$ –" : fmt(cart.total)}
+                            {cartLoading ? "R$ –" : fmt(cart.total || 0)}
                         </span>
 
                         {showCartPopup && (
@@ -633,7 +642,7 @@ export function NavbarStore() {
                                     <>
                                         <div className="border-t pt-3 mt-3 flex justify-between font-semibold">
                                             <span className="text-black">TOTAL</span>
-                                            <span className="text-black">{fmt(cart.total)}</span>
+                                            <span className="text-black">{fmt(cart.total || 0)}</span>
                                         </div>
                                         <button
                                             onClick={() => router.push("/carrinho")}

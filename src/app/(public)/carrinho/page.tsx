@@ -11,8 +11,9 @@ import { toast } from "react-toastify";
 import { NavbarCheckout } from "@/app/components/navbar/navbarCheckout";
 import { FooterCheckout } from "@/app/components/footer/footerCheckout";
 import axios from "axios";
+import { SelectedOption } from "Types/types";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
 interface ShippingOption {
   id: string;
@@ -22,10 +23,8 @@ interface ShippingOption {
 }
 
 export default function CartPage() {
-  
   const { colors } = useTheme();
-  const { cart, loading: cartLoading, updateItem, removeItem, clearCart } =
-    useCart();
+  const { cart, loading: cartLoading, updateItem, removeItem, clearCart } = useCart();
 
   // CEP / frete
   const [cep, setCep] = useState("");
@@ -34,20 +33,18 @@ export default function CartPage() {
 
   const [loadingFrete, setLoadingFrete] = useState(false);
 
-  // cupom: campo de digitação vs cupom aplicado
+  // cupom
   const [couponInput, setCouponInput] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
-  const [validatingCoupon, setValidatingCoupon] = useState(false); // ← adicionado
+  const [validatingCoupon, setValidatingCoupon] = useState(false);
 
-  // se é a primeira compra
+  // is first purchase?
   const isFirstPurchase = false;
 
   // Frete atual
-  const currentFrete = selectedShipping
-    ? shippingOptions.find((o) => o.id === selectedShipping)?.price || 0
-    : 0;
+  const currentFrete = selectedShipping ? (shippingOptions.find((o) => o.id === selectedShipping)?.price || 0) : 0;
 
-  // Hook de promoções (retorna também `promotions`)
+  // Hook de promoções
   const {
     discountTotal,
     freeGifts,
@@ -57,86 +54,51 @@ export default function CartPage() {
     error: promoError,
   } = usePromotions(cep, appliedCoupon, currentFrete, isFirstPurchase);
 
-  // separar descontos de frete e produto
-  const shippingDiscount = promotions
-    .filter((p) => p.type === 'shipping')
-    .reduce((sum, p) => sum + p.discount, 0);
+  const shippingDiscount = promotions.filter((p) => p.type === 'shipping').reduce((s, p) => s + p.discount, 0);
+  const productDiscount = (discountTotal ?? 0) - shippingDiscount;
 
-  const productDiscount = discountTotal - shippingDiscount;
-
-  // lookup de nomes e tipos de brinde
-  const [giftInfo, setGiftInfo] = useState<
-    Record<string, { name: string; type: "produto" | "variante" }>
-  >({});
+  // gift lookup
+  const [giftInfo, setGiftInfo] = useState<Record<string, { name: string; type: "produto" | "variante" }>>({});
 
   useEffect(() => {
-    const missing = freeGifts
-      .map((g) => g.variantId)
-      .filter((id) => !giftInfo[id]);
+    const missing = freeGifts.map((g) => g.variantId).filter((id) => id && !giftInfo[id]);
     if (missing.length === 0) return;
-
     missing.forEach(async (id) => {
-      // tenta buscar como PRODUTO
       try {
-        const prodRes = await axios.get<{ name: string }>(
-          `${API_URL}/product/unique/data?product_id=${id}`
-        );
-        if (prodRes.data.name) {
-          setGiftInfo((prev) => ({
-            ...prev,
-            [id]: { name: prodRes.data.name, type: "produto" },
-          }));
+        const prodRes = await axios.get<{ name: string }>(`${API_URL}/product/unique/data?product_id=${id}`);
+        if (prodRes.data?.name) {
+          setGiftInfo((prev) => ({ ...prev, [id]: { name: prodRes.data.name, type: "produto" } }));
           return;
         }
-      } catch {
-        // ignora e tenta variante
-      }
-      // busca como VARIANTE
+      } catch { }
       try {
-        const varRes = await axios.get<{ sku: string; name?: string }>(
-          `${API_URL}/variant/get/unique?variant_id=${id}`
-        );
-        const fallback = varRes.data.sku || "Desconhecido";
-        setGiftInfo((prev) => ({
-          ...prev,
-          [id]: { name: fallback, type: "variante" },
-        }));
+        const varRes = await axios.get<{ sku?: string; name?: string }>(`${API_URL}/variant/get/unique?variant_id=${id}`);
+        const fallback = varRes.data?.sku ?? varRes.data?.name ?? "Desconhecido";
+        setGiftInfo((prev) => ({ ...prev, [id]: { name: fallback, type: "variante" } }));
       } catch {
-        setGiftInfo((prev) => ({
-          ...prev,
-          [id]: { name: "Produto desconhecido", type: "produto" },
-        }));
+        setGiftInfo((prev) => ({ ...prev, [id]: { name: "Produto desconhecido", type: "produto" } }));
       }
     });
   }, [freeGifts, giftInfo]);
 
-  // formata moeda
-  const fmt = new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format;
-  const total = cart.subtotal - productDiscount + (currentFrete - shippingDiscount);
+  const fmt = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format;
+  const total = (cart?.subtotal ?? 0) - (productDiscount ?? 0) + (currentFrete - (shippingDiscount ?? 0));
 
-  // formata CEP
   function handleCepChange(e: ChangeEvent<HTMLInputElement>) {
     let digits = e.target.value.replace(/\D/g, "").slice(0, 8);
     if (digits.length > 5) digits = digits.slice(0, 5) + "-" + digits.slice(5);
     setCep(digits);
   }
 
-  // calcula frete
   const calculateShipping = useCallback(async () => {
-    // não calcula sem itens
-    if (cart.items.length === 0) {
+    if (!cart?.items || cart.items.length === 0) {
       toast.warn("Adicione itens ao carrinho antes de calcular o frete.");
       return;
     }
-    // valida CEP
     if (!cep.match(/^\d{5}-\d{3}$/)) {
       toast.error("Informe um CEP válido (00000-000)");
       return;
     }
-
     setLoadingFrete(true);
     try {
       const res = await fetch(`${API_URL}/shipment/calculate`, {
@@ -155,10 +117,8 @@ export default function CartPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        setShippingOptions(data.options);
-        if (data.options.length) {
-          setSelectedShipping(data.options[0].id);
-        }
+        setShippingOptions(data.options || []);
+        if (data.options?.length) setSelectedShipping(data.options[0].id);
       } else {
         toast.error("Não foi possível calcular o frete.");
       }
@@ -170,11 +130,11 @@ export default function CartPage() {
   }, [cep, cart.items]);
 
   useEffect(() => {
-    if (cart.items.length === 0) {
+    if (!cart?.items || cart.items.length === 0) {
       setShippingOptions([]);
       setSelectedShipping(null);
     }
-  }, [cart.items.length]);
+  }, [cart?.items?.length]);
 
   useEffect(() => {
     if (shippingOptions.length > 0 && cep.match(/^\d{5}-\d{3}$/)) {
@@ -182,30 +142,25 @@ export default function CartPage() {
     }
   }, [cart.items, cep, shippingOptions.length, calculateShipping]);
 
-  // aplica cupom COM VALIDAÇÃO
   async function applyCoupon() {
     const code = couponInput.trim();
     if (!code) return;
-
     setValidatingCoupon(true);
     try {
-      const res = await axios.post<{ valid: boolean }>(
-        `${API_URL}/coupon/validate`,
-        {
-          cartItems: cart.items.map(i => ({
-            variantId: i.variant_id,
-            productId: i.product_id,
-            quantity: i.quantity,
-            unitPrice: i.price,
-          })),
-          customer_id: cart.id || null,
-          isFirstPurchase,
-          cep: cep || null,
-          shippingCost: currentFrete,
-          coupon: code,
-        }
-      );
-      if (res.data.valid) {
+      const res = await axios.post<{ valid: boolean }>(`${API_URL}/coupon/validate`, {
+        cartItems: cart.items.map(i => ({
+          variantId: i.variant_id,
+          productId: i.product_id,
+          quantity: i.quantity,
+          unitPrice: i.price,
+        })),
+        customer_id: cart.id || null,
+        isFirstPurchase,
+        cep: cep || null,
+        shippingCost: currentFrete,
+        coupon: code,
+      });
+      if (res.data?.valid) {
         setAppliedCoupon(code);
         toast.success(`Cupom “${code}” aplicado!`);
       } else {
@@ -218,12 +173,18 @@ export default function CartPage() {
     }
   }
 
-  // remove cupom
   function removeCoupon() {
     setAppliedCoupon(null);
     setCouponInput("");
     toast.info("Cupom removido");
   }
+
+  // helper para resolver src de imagem (path local ou remoto)
+  const resolveImageSrc = (src?: string) => {
+    if (!src) return "";
+    if (src.startsWith("http")) return src;
+    return `${API_URL}/files/${src}`;
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -232,142 +193,139 @@ export default function CartPage() {
       <main className="container mx-auto px-4 py-8 grid lg:grid-cols-3 gap-8">
         {/* Itens do Carrinho */}
         <section className="lg:col-span-2 space-y-4">
-          {cartLoading && (
-            <p className="text-center text-gray-500">Carregando carrinho…</p>
-          )}
-          {!cartLoading && cart.items.length === 0 && (
+          {cartLoading && <p className="text-center text-gray-500">Carregando carrinho…</p>}
+
+          {!cartLoading && (!cart?.items || cart.items.length === 0) && (
             <p className="text-center text-gray-500">Carrinho vazio...</p>
           )}
-          {!cartLoading &&
-            cart.items.map((item) => (
-              <div
-                key={item.id}
-                className="relative flex items-center bg-white p-4 rounded shadow"
-              >
-                {/* Badge */}
-                {badgeMap[item.variant_id || ""] && (
-                  <Image
-                    src={`${API_URL}/files/${badgeMap[item.variant_id || ""].imageUrl}`}
-                    width={120}
-                    height={120}
-                    alt={badgeMap[item.variant_id || ""].title}
-                    title={badgeMap[item.variant_id || ""].title}
-                    className="absolute top-2 left-2 w-8 h-8 object-contain"
-                  />
-                )}
 
-                {/* Imagem */}
-                <div className="w-28 h-20 flex-shrink-0">
-                  <Image
-                    src={`${API_URL}/files/${item.images}`}
-                    alt={item.name}
-                    width={80}
-                    height={80}
-                    className="object-cover rounded"
-                  />
+          {!cartLoading && cart.items.map((item) => {
+            // prioriza variantImage se existir, senão images
+            const displayedImg = item.variantImage
+              ? resolveImageSrc(item.variantImage)
+              : Array.isArray(item.images)
+                ? (item.images[0] ? resolveImageSrc(item.images[0] as string) : "")
+                : resolveImageSrc(item.images as string);
+
+            return (
+              <div key={item.id} className="relative flex items-start bg-white p-4 rounded shadow">
+                {/* Imagem principal (com prioridade para variantImage) */}
+                <div className="w-28 h-28 flex-shrink-0 flex items-center justify-center overflow-hidden rounded bg-gray-100">
+                  {displayedImg ? (
+                    // next/image exige configuração de domains para imagens remotas
+                    <Image src={displayedImg} alt={item.name} width={112} height={112} className="object-contain" />
+                  ) : (
+                    <div className="text-gray-400">sem imagem</div>
+                  )}
                 </div>
 
                 {/* Detalhes */}
                 <div className="flex-1 px-4">
-                  <p className="text-gray-800">{item.name}</p>
-                  <p className="mt-1 text-sm text-gray-600">
-                    {fmt(item.price)} cada
-                  </p>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-gray-800">{item.name}</p>
+
+                      {/* Variante (nome/sku) */}
+                      {(item.variant_name || item.variant_sku) && (
+                        <p className="mt-1 text-sm text-gray-600">
+                          <strong>Variante:</strong>{" "}
+                          {item.variant_name ?? item.variant_sku}
+                          {item.variant_sku && item.variant_name && (
+                            <span className="ml-2 text-xs text-gray-400">({item.variant_sku})</span>
+                          )}
+                        </p>
+                      )}
+
+                      {/* Selected options com possível thumb dentro da pill */}
+                      {item.selectedOptions && item.selectedOptions.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {item.selectedOptions.map((opt: SelectedOption, idx: number) => (
+                            <div key={idx} className="flex items-center gap-2 text-xs px-2 py-1 rounded-full border border-gray-200 bg-gray-50" title={`${opt.name}: ${opt.value}`}>
+                              {opt.image ? (
+                                <img
+                                  src={opt.image.startsWith("http") ? opt.image : `${API_URL}/files/${opt.image}`}
+                                  alt={opt.value}
+                                  className="w-5 h-5 object-cover rounded-full"
+                                />
+                              ) : null}
+                              <strong className="mr-1 text-violet-600">{opt.name}:</strong> <span className="text-violet-600">{opt.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <p className="mt-2 text-sm text-gray-600">{fmt(item.price)} cada</p>
+                    </div>
+
+                    {/* Preço total item */}
+                    <div className="text-right">
+                      <p className="text-gray-800">{fmt((item.price ?? 0) * (item.quantity ?? 0))}</p>
+                      <p className="text-xs text-gray-500">12x de {fmt(((item.price ?? 0) * (item.quantity ?? 0)) / 12)} sem juros</p>
+                    </div>
+                  </div>
+
+                  {/* Thumbs de imagens de atributos (se houver) */}
+                  {item.attributeImages && item.attributeImages.length > 0 && (
+                    <div className="mt-3 flex items-center gap-2">
+                      {item.attributeImages.map((aUrl, j) => (
+                        <img
+                          key={j}
+                          src={aUrl.startsWith("http") ? aUrl : `${API_URL}/files/${aUrl}`}
+                          alt={`atributo-${j}`}
+                          className="w-10 h-10 object-cover rounded border"
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                {/* Remove */}
-                <button
-                  onClick={() => removeItem(item.id)}
-                  className="p-2 text-gray-400 hover:text-red-600"
-                >
-                  <FiTrash2 />
-                </button>
-
-                {/* Quantidade */}
-                <div className="flex items-center border border-gray-300 rounded ml-4">
-                  <button
-                    onClick={() =>
-                      updateItem(item.id, Math.max(1, item.quantity - 1))
-                    }
-                    disabled={item.quantity <= 1}
-                    className="px-3 py-1 disabled:opacity-50 text-gray-500"
-                  >
-                    <FiMinus />
+                {/* Ações (Remover / Qtd) */}
+                <div className="ml-4 flex flex-col items-end">
+                  <button onClick={() => removeItem(item.id)} className="p-2 text-gray-400 hover:text-red-600">
+                    <FiTrash2 />
                   </button>
-                  <span className="px-4 text-gray-600">{item.quantity}</span>
-                  <button
-                    onClick={() => updateItem(item.id, item.quantity + 1)}
-                    className="px-3 py-1 text-gray-500"
-                  >
-                    <FiPlus />
-                  </button>
-                </div>
 
-                {/* Preço total item */}
-                <div className="w-32 text-right px-4">
-                  <p className="text-gray-800">
-                    {fmt(item.price * item.quantity)}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    12x de {fmt((item.price * item.quantity) / 12)} sem juros
-                  </p>
+                  <div className="flex items-center border border-gray-300 rounded mt-2">
+                    <button onClick={() => updateItem(item.id, Math.max(1, item.quantity - 1))} disabled={item.quantity <= 1} className="px-3 py-1 disabled:opacity-50 text-gray-500">
+                      <FiMinus />
+                    </button>
+                    <span className="px-4 text-gray-600">{item.quantity}</span>
+                    <button onClick={() => updateItem(item.id, item.quantity + 1)} className="px-3 py-1 text-gray-500">
+                      <FiPlus />
+                    </button>
+                  </div>
                 </div>
               </div>
-            ))}
+            );
+          })}
         </section>
 
         {/* Resumo / Checkout */}
         <aside className="space-y-6">
           {/* CEP */}
           <div className="bg-white p-4 rounded shadow space-y-2">
-            <label className="block text-sm font-medium text-gray-700">
-              Digite o CEP de entrega
-            </label>
+            <label className="block text-sm font-medium text-gray-700">Digite o CEP de entrega</label>
             <div className="flex space-x-2">
-              <input
-                type="text"
-                value={cep}
-                onChange={handleCepChange}
-                placeholder="00000-000"
-                className="flex-1 border border-gray-300 rounded px-3 py-2 text-black"
-              />
-              <button
-                onClick={calculateShipping}
-                disabled={loadingFrete}
-                className="bg-gray-800 hover:bg-gray-900 text-white px-4 rounded disabled:opacity-50"
-              >
+              <input type="text" value={cep} onChange={handleCepChange} placeholder="00000-000" className="flex-1 border border-gray-300 rounded px-3 py-2 text-black" />
+              <button onClick={calculateShipping} disabled={loadingFrete} className="bg-gray-800 hover:bg-gray-900 text-white px-4 rounded disabled:opacity-50">
                 {loadingFrete ? "Calculando…" : "Calcular"}
               </button>
             </div>
-            <p className="text-xs text-gray-500">
-              Atenção: consultando Melhor Envio em tempo real.
-            </p>
+            <p className="text-xs text-gray-500">Atenção: consultando Melhor Envio em tempo real.</p>
           </div>
 
           {/* Opções de Frete */}
           {shippingOptions.length > 0 && (
             <div className="bg-white p-4 rounded shadow space-y-2 text-black">
               {shippingOptions.map((opt) => (
-                <div
-                  key={opt.id}
-                  className="flex items-center justify-between"
-                >
+                <div key={opt.id} className="flex items-center justify-between">
                   <label className="flex-1 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="shipping"
-                      value={opt.id}
-                      checked={selectedShipping === opt.id}
-                      onChange={() => setSelectedShipping(opt.id)}
-                      className="mr-2 text-black"
-                    />
+                    <input type="radio" name="shipping" value={opt.id} checked={selectedShipping === opt.id} onChange={() => setSelectedShipping(opt.id)} className="mr-2 text-black" />
                     <span className="font-medium">{opt.name}</span>
                   </label>
                   <div className="text-right">
                     <p>{fmt(opt.price)}</p>
-                    <p className="text-xs text-gray-500">
-                      {opt.deliveryTime}
-                    </p>
+                    <p className="text-xs text-gray-500">{opt.deliveryTime}</p>
                   </div>
                 </div>
               ))}
@@ -376,79 +334,36 @@ export default function CartPage() {
 
           {/* Cupom */}
           <div className="bg-white p-4 rounded shadow space-y-2">
-            <label className="block text-sm font-medium text-gray-700">
-              Possui cupom?
-            </label>
+            <label className="block text-sm font-medium text-gray-700">Possui cupom?</label>
 
             {!appliedCoupon ? (
               <div className="flex space-x-2">
-                <input
-                  type="text"
-                  value={couponInput}
-                  onChange={(e) => setCouponInput(e.target.value)}
-                  placeholder="Código"
-                  className="flex-1 border border-gray-300 rounded px-3 py-2 text-black"
-                />
-                <button
-                  onClick={applyCoupon}
-                  disabled={!couponInput.trim() || validatingCoupon}
-                  className="bg-gray-800 text-white px-4 rounded disabled:opacity-50"
-                >
+                <input type="text" value={couponInput} onChange={(e) => setCouponInput(e.target.value)} placeholder="Código" className="flex-1 border border-gray-300 rounded px-3 py-2 text-black" />
+                <button onClick={applyCoupon} disabled={!couponInput.trim() || validatingCoupon} className="bg-gray-800 text-white px-4 rounded disabled:opacity-50">
                   {validatingCoupon ? "Validando…" : "Aplicar"}
                 </button>
               </div>
             ) : (
               <div className="flex items-center justify-between bg-indigo-50 p-2 rounded">
-                <span className="text-indigo-800">
-                  Cupom <strong>{appliedCoupon}</strong> aplicado
-                </span>
-                <button
-                  onClick={removeCoupon}
-                  className="p-1 text-indigo-600 hover:text-indigo-900"
-                  title="Remover cupom"
-                >
-                  <FiX />
-                </button>
+                <span className="text-indigo-800">Cupom <strong>{appliedCoupon}</strong> aplicado</span>
+                <button onClick={removeCoupon} className="p-1 text-indigo-600 hover:text-indigo-900" title="Remover cupom"><FiX /></button>
               </div>
             )}
 
-            {loadingPromo && (
-              <p className="text-red-200">Aplicando promoções…</p>
-            )}
+            {loadingPromo && <p className="text-red-200">Aplicando promoções…</p>}
             {promoError && <p className="text-red-600">{promoError}</p>}
-            {!promoError && discountTotal > 0 && (
-              <p className="text-green-600">Desconto: -{fmt(discountTotal)}</p>
-            )}
+            {!promoError && (discountTotal ?? 0) > 0 && <p className="text-green-600">Desconto: -{fmt(discountTotal ?? 0)}</p>}
           </div>
 
-          {/* Listagem das promoções individuais */}
+          {/* Promoções aplicadas */}
           {promotions.length > 0 && (
             <div className="bg-gray-50 p-4 rounded space-y-2">
               <h3 className="font-semibold text-black">Promoções aplicadas</h3>
               <ul className="list-disc list-inside">
                 {promotions.map((p: PromotionDetail) => (
-                  <li
-                    key={p.id}
-                    className="flex justify-between items-start"
-                  >
-                    <div>
-                      {p.description && (
-                        <p className="text-sm text-gray-600">
-                          {p.description}
-                        </p>
-                      )}
-                    </div>
-                    <span
-                      className={
-                        p.type === "shipping"
-                          ? "text-blue-600"
-                          : p.type === "product"
-                            ? "text-green-600"
-                            : "text-gray-600"
-                      }
-                    >
-                      -{fmt(p.discount)}
-                    </span>
+                  <li key={p.id} className="flex justify-between items-start">
+                    <div>{p.description && <p className="text-sm text-gray-600">{p.description}</p>}</div>
+                    <span className={p.type === "shipping" ? "text-blue-600" : p.type === "product" ? "text-green-600" : "text-gray-600"}>-{fmt(p.discount)}</span>
                   </li>
                 ))}
               </ul>
@@ -459,23 +374,22 @@ export default function CartPage() {
           <div className="bg-white p-4 rounded shadow space-y-1">
             <div className="flex justify-between">
               <span className="text-gray-700">Subtotal</span>
-              <span className="text-black">{fmt(cart.subtotal)}</span>
+              <span className="text-black">{fmt(cart.subtotal ?? 0)}</span>
             </div>
-            {discountTotal > 0 && (
+            {(discountTotal ?? 0) > 0 && (
               <div className="flex justify-between text-green-600">
                 <span className="text-gray-700">Desconto</span>
-                <span>-{fmt(discountTotal)}</span>
+                <span>-{fmt(discountTotal ?? 0)}</span>
               </div>
             )}
+
             {currentFrete > 0 && (
               <>
                 {shippingDiscount > 0 ? (
                   <>
                     <div className="flex justify-between">
                       <span className="text-gray-700">Frete</span>
-                      <span className="line-through text-gray-500">
-                        {fmt(currentFrete)}
-                      </span>
+                      <span className="line-through text-gray-500">{fmt(currentFrete)}</span>
                     </div>
                     <div className="flex justify-between text-blue-600 font-semibold">
                       <span className="text-gray-700">Frete (com desconto)</span>
@@ -503,9 +417,7 @@ export default function CartPage() {
               <span className="text-red-500">{fmt(total)}</span>
             </div>
 
-            <p className="text-xs text-gray-500">
-              12x de {fmt(total / 12)} sem juros
-            </p>
+            <p className="text-xs text-gray-500">12x de {fmt(total / 12)} sem juros</p>
           </div>
 
           {/* Brindes */}
@@ -513,39 +425,21 @@ export default function CartPage() {
             <div className="bg-green-50 p-3 rounded text-green-800 text-sm">
               🎁 Você ganhou:&nbsp;
               {freeGifts.map((g) => {
-                const info = giftInfo[g.variantId] || {
-                  name: "Desconhecido",
-                  type: "produto",
-                };
-                return (
-                  <span key={g.variantId}>
-                    {g.quantity}× {info.type} “{info.name}”&nbsp;
-                  </span>
-                );
+                const info = giftInfo[g.variantId] || { name: "Desconhecido", type: "produto" };
+                return <span key={g.variantId}>{g.quantity}× {info.type} “{info.name}”&nbsp;</span>;
               })}
             </div>
           )}
 
-          {/* Ações Finais */}
+          {/* Ações finais */}
           <div className="space-y-2">
-            <button
-              onClick={() => clearCart()}
-              className="w-full bg-gray-800 hover:bg-gray-900 text-white py-3 rounded"
-            >
-              LIMPAR CARRINHO
-            </button>
-            <button className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded">
-              FINALIZAR COMPRA
-            </button>
-            <Link
-              href="/"
-              className="block text-center text-gray-800 hover:underline"
-            >
-              Continuar Comprando
-            </Link>
+            <button onClick={() => clearCart()} className="w-full bg-gray-800 hover:bg-gray-900 text-white py-3 rounded">LIMPAR CARRINHO</button>
+            <button className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded">FINALIZAR COMPRA</button>
+            <Link href="/" className="block text-center text-gray-800 hover:underline">Continuar Comprando</Link>
           </div>
         </aside>
       </main>
+
       <FooterCheckout />
     </div>
   );

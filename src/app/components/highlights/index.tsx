@@ -25,10 +25,10 @@ function HighlightsCard({ product }: { product: ProductFormData }) {
     const [adding, setAdding] = useState(false);
 
     // verifica se há desconto
-    const hasOffer = product.price_per < product.price_of;
+    const hasOffer = product.price_per! < product.price_of!;
     // calcula % de desconto
     const discountPercentage = hasOffer
-        ? Math.round((1 - product.price_per / product.price_of) * 100)
+        ? Math.round((1 - product.price_per! / product.price_of!) * 100)
         : 0;
     // escolhe imagem principal
     const primaryImage =
@@ -38,9 +38,9 @@ function HighlightsCard({ product }: { product: ProductFormData }) {
         style: "currency",
         currency: "BRL",
     });
-    const formattedPricePer = formatter.format(product.price_per);
-    const formattedPriceOf = formatter.format(product.price_of);
-    const formattedInstallment = formatter.format(product.price_per / 12);
+    const formattedPricePer = formatter.format(product.price_per!);
+    const formattedPriceOf = formatter.format(product.price_of!);
+    const formattedInstallment = formatter.format(product.price_per! / 12);
 
     function handleDecrease() {
         setQuantity((q) => Math.max(1, q - 1));

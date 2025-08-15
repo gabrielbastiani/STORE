@@ -25,9 +25,9 @@ function RecentlyViewedCard({ product }: { product: ProductFormData }) {
     const [quantity, setQuantity] = useState(1);
     const [adding, setAdding] = useState(false);
 
-    const hasOffer = product.price_per < product.price_of;
+    const hasOffer = product.price_per! < product.price_of!;
     const discountPercentage = hasOffer
-        ? Math.round((1 - product.price_per / product.price_of) * 100)
+        ? Math.round((1 - product.price_per! / product.price_of!) * 100)
         : 0;
     const primaryImage =
         product.images.find((img) => img.isPrimary) || product.images[0];
@@ -36,9 +36,9 @@ function RecentlyViewedCard({ product }: { product: ProductFormData }) {
         style: "currency",
         currency: "BRL",
     }).format;
-    const formattedPricePer = fmt(product.price_per);
-    const formattedPriceOf = fmt(product.price_of);
-    const formattedInstallment = fmt(product.price_per / 12);
+    const formattedPricePer = fmt(product.price_per!);
+    const formattedPriceOf = fmt(product.price_of!);
+    const formattedInstallment = fmt(product.price_per! / 12);
 
     function handleDecrease() {
         setQuantity((q) => Math.max(1, q - 1));
