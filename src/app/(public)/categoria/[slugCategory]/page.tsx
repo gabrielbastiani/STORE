@@ -12,6 +12,9 @@ import { FooterStore } from "@/app/components/footer/footerStore";
 import { ProductFormData } from "Types/types";
 import { useTheme } from "@/app/contexts/ThemeContext";
 import { useCart } from "@/app/contexts/CartContext";
+import StoreLayout from "@/app/components/layouts/storeLayout";
+import { SlideBannerClient } from "@/app/components/slideBannerClient";
+import { PublicationSidebarClient } from "@/app/components/publicationSidebarClient";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -171,151 +174,142 @@ export default function CategoryPageClient() {
     const pagesCount = Math.ceil(total / perPage);
 
     return (
-        <>
-            <NavbarStore />
-            <main
-                className="container mx-auto px-4 py-6"
-                style={{ background: colors?.fundo_posts_mais_vizualizados || "#e5e9ee" }}
+        <StoreLayout
+            navbar={<NavbarStore />}
+            bannersSlide={<SlideBannerClient position="SLIDER" local='Pagina_produtos_categoria' local_site='Pagina_produtos_categoria' />}
+            footer={<FooterStore />}
+            local='Pagina_produtos_categoria'
+            sidebar_publication={<PublicationSidebarClient local='Pagina_produtos_categoria' />}
+        >
+            <div
+                className={`fixed inset-0 z-50 transform transition-transform duration-300 ease-in-out lg:hidden ${isFiltersOpen ? "translate-x-0" : "-translate-x-full"
+                    }`}
             >
-                {/* Mobile filters drawer */}
                 <div
-                    className={`fixed inset-0 z-50 transform transition-transform duration-300 ease-in-out lg:hidden ${isFiltersOpen ? "translate-x-0" : "-translate-x-full"
-                        }`}
-                >
-                    <div
-                        className="absolute inset-0 bg-black bg-opacity-50"
-                        onClick={() => setIsFiltersOpen(false)}
-                    />
-                    <div className="absolute left-0 top-0 h-full w-4/5 max-w-sm bg-white z-50 shadow-lg overflow-y-auto">
-                        <div className="sticky top-0 bg-white z-10 p-4 border-b flex justify-between items-center">
-                            <h3 className="font-semibold text-lg text-black"></h3>
-                            <button
-                                onClick={() => setIsFiltersOpen(false)}
-                                className="p-1 rounded-full hover:bg-gray-100"
-                            >
-                                <FiX className="text-xl text-black" />
-                            </button>
-                        </div>
-                        <div className="p-4">
-                            <CategoryFilters
-                                slug={slug ?? ""}
-                                selectedFilters={selectedFilters}
-                                onChange={handleFiltersChange}
-                            />
-                        </div>
+                    className="absolute inset-0 bg-black bg-opacity-50"
+                    onClick={() => setIsFiltersOpen(false)}
+                />
+                <div className="absolute left-0 top-0 h-full w-4/5 max-w-sm bg-white z-50 shadow-lg overflow-y-auto">
+                    <div className="sticky top-0 bg-white z-10 p-4 border-b flex justify-between items-center">
+                        <h3 className="font-semibold text-lg text-black"></h3>
+                        <button
+                            onClick={() => setIsFiltersOpen(false)}
+                            className="p-1 rounded-full hover:bg-gray-100"
+                        >
+                            <FiX className="text-xl text-black" />
+                        </button>
                     </div>
-                </div>
-
-                <div className="flex gap-6">
-                    <aside className="w-72 hidden lg:block">
+                    <div className="p-4">
                         <CategoryFilters
                             slug={slug ?? ""}
                             selectedFilters={selectedFilters}
                             onChange={handleFiltersChange}
                         />
-                    </aside>
-
-                    <section className="flex-1">
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
-                            <div>
-                                <p className="text-sm text-gray-600">
-                                    Foram encontrados <strong>{total}</strong> produtos
-                                </p>
-                                <h1 className="text-2xl font-bold mt-1 text-black">
-                                    {(slug ?? "").replace("-", " ")}
-                                </h1>
-                            </div>
-
-                            <div className="flex items-center gap-3 text-black">
-                                <div className="hidden sm:flex items-center border rounded px-2 py-1 gap-2">
-                                    <label className="text-sm text-black">Ordenar por:</label>
-                                    <select
-                                        value={sort}
-                                        onChange={(e) => {
-                                            setSort(e.target.value);
-                                            updateUrlParams({ sort: e.target.value, page: 1 });
-                                            if (slug) loadProducts({ page: 1 });
-                                        }}
-                                        className="text-sm p-3"
-                                    >
-                                        <option value="maisVendidos">Mais Vendidos</option>
-                                        <option value="nomeAsc">Nome A-Z</option>
-                                        <option value="nomeDesc">Nome Z-A</option>
-                                        <option value="menor">Menor Preço</option>
-                                        <option value="maior">Maior Preço</option>
-                                        <option value="maiorDesconto">Maiores Descontos</option>
-                                    </select>
-                                </div>
-
-                                <button
-                                    className="sm:hidden flex items-center gap-2 px-3 py-2 border rounded"
-                                    onClick={() => setIsFiltersOpen(true)}
-                                >
-                                    <FiFilter /> Filtrar
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                            {loading && (
-                                <div className="col-span-full text-red-400">Carregando produtos...</div>
-                            )}
-                            {!loading && products.length === 0 && (
-                                <div className="col-span-full">Nenhum produto encontrado.</div>
-                            )}
-
-                            {products.map((product) => (
-                                <HighlightsLikeCard key={product.id} product={product} colors={colors} />
-                            ))}
-                        </div>
-
-                        <div className="mt-6 flex items-center justify-center gap-2">
-                            <button
-                                onClick={() => {
-                                    if (page > 1) {
-                                        setPage(page - 1);
-                                        updateUrlParams({ page: page - 1 });
-                                        if (slug) loadProducts({ page: page - 1 });
-                                    }
-                                }}
-                                className="px-3 py-2 border rounded disabled:opacity-50"
-                                disabled={page === 1}
-                            >
-                                Anterior
-                            </button>
-                            <span className="px-3 py-2">
-                                {page} / {pagesCount || 1}
-                            </span>
-                            <button
-                                onClick={() => {
-                                    if (page < pagesCount) {
-                                        setPage(page + 1);
-                                        updateUrlParams({ page: page + 1 });
-                                        if (slug) loadProducts({ page: page + 1 });
-                                    }
-                                }}
-                                className="px-3 py-2 border rounded"
-                                disabled={page >= pagesCount}
-                            >
-                                Próxima
-                            </button>
-                        </div>
-                    </section>
+                    </div>
                 </div>
-            </main>
-            <FooterStore />
-        </>
+            </div>
+
+            <div className="flex gap-6">
+                <aside className="w-72 hidden lg:block">
+                    <CategoryFilters
+                        slug={slug ?? ""}
+                        selectedFilters={selectedFilters}
+                        onChange={handleFiltersChange}
+                    />
+                </aside>
+
+                <section className="flex-1">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
+                        <div>
+                            <p className="text-sm text-gray-600">
+                                Foram encontrados <strong>{total}</strong> produtos
+                            </p>
+                            <h1 className="text-2xl font-bold mt-1 text-black">
+                                {(slug ?? "").replace("-", " ")}
+                            </h1>
+                        </div>
+
+                        <div className="flex items-center gap-3 text-black">
+                            <div className="hidden sm:flex items-center border rounded px-2 py-1 gap-2">
+                                <label className="text-sm text-black">Ordenar por:</label>
+                                <select
+                                    value={sort}
+                                    onChange={(e) => {
+                                        setSort(e.target.value);
+                                        updateUrlParams({ sort: e.target.value, page: 1 });
+                                        if (slug) loadProducts({ page: 1 });
+                                    }}
+                                    className="text-sm p-3"
+                                >
+                                    <option value="maisVendidos">Mais Vendidos</option>
+                                    <option value="nomeAsc">Nome A-Z</option>
+                                    <option value="nomeDesc">Nome Z-A</option>
+                                    <option value="menor">Menor Preço</option>
+                                    <option value="maior">Maior Preço</option>
+                                    <option value="maiorDesconto">Maiores Descontos</option>
+                                </select>
+                            </div>
+
+                            <button
+                                className="sm:hidden flex items-center gap-2 px-3 py-2 border rounded"
+                                onClick={() => setIsFiltersOpen(true)}
+                            >
+                                <FiFilter /> Filtrar
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                        {loading && (
+                            <div className="col-span-full text-red-400">Carregando produtos...</div>
+                        )}
+                        {!loading && products.length === 0 && (
+                            <div className="col-span-full">Nenhum produto encontrado.</div>
+                        )}
+
+                        {products.map((product) => (
+                            <CardsProductsCategory key={product.id} product={product} colors={colors} />
+                        ))}
+                    </div>
+
+                    <div className="mt-6 flex items-center justify-center gap-2">
+                        <button
+                            onClick={() => {
+                                if (page > 1) {
+                                    setPage(page - 1);
+                                    updateUrlParams({ page: page - 1 });
+                                    if (slug) loadProducts({ page: page - 1 });
+                                }
+                            }}
+                            className="px-3 py-2 border rounded disabled:opacity-50"
+                            disabled={page === 1}
+                        >
+                            Anterior
+                        </button>
+                        <span className="px-3 py-2">
+                            {page} / {pagesCount || 1}
+                        </span>
+                        <button
+                            onClick={() => {
+                                if (page < pagesCount) {
+                                    setPage(page + 1);
+                                    updateUrlParams({ page: page + 1 });
+                                    if (slug) loadProducts({ page: page + 1 });
+                                }
+                            }}
+                            className="px-3 py-2 border rounded"
+                            disabled={page >= pagesCount}
+                        >
+                            Próxima
+                        </button>
+                    </div>
+                </section>
+            </div>
+        </StoreLayout>
     );
 }
 
-/* =========================
-   Highlights-like Card (layout recuperado do HighlightsCard.tsx)
-   - mantém dimensões e estilos originais
-   - se product.variants existir -> show "Ver opções" button que abre modal
-   - se não existir -> botão Adicionar age diretamente (com quantity)
-   ========================= */
-
-function HighlightsLikeCard({
+function CardsProductsCategory({
     product,
     colors,
 }: {
@@ -330,13 +324,6 @@ function HighlightsLikeCard({
     // modal state
     const [isModalOpen, setIsModalOpen] = useState(false);
 
-    // helpers for image src
-    const extractUrl = (maybe: any): string | null => {
-        if (!maybe && maybe !== 0) return null;
-        if (typeof maybe === "string") return maybe;
-        if (maybe?.url) return maybe.url;
-        return null;
-    };
     const toSrc = (raw: string | null | undefined) => {
         if (!raw) return "/placeholder.png";
         if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
@@ -496,7 +483,7 @@ function VariantModal({
         return null;
     };
     const toSrc = (raw: string | null | undefined) => {
-        if (!raw) return "/placeholder.png";
+        if (!raw) return "../../../../../public/no-image.png";
         if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
         if (raw.startsWith("/files/") || raw.startsWith("/")) return `${process.env.NEXT_PUBLIC_API_URL || ""}${raw.startsWith("/") ? raw : `/${raw}`}`;
         return `${API_URL}/files/${raw}`;
@@ -671,7 +658,6 @@ function VariantModal({
 
     const displayPrice = Number(selectedVariant?.price_per ?? product.price_per ?? 0);
     const displayPriceOf = selectedVariant?.price_of ?? product.price_of ?? null;
-    const displayStock = Number(selectedVariant?.stock ?? product.stock ?? 0);
 
     const formatter = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
     const formattedPricePer = formatter.format(displayPrice ?? 0);
