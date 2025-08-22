@@ -1,11 +1,11 @@
-// app/contexts/CartContext.tsx (atualizado com captura de imagens de variante/atributo)
-"use client";
+"use client"
 
 import React, {
   createContext,
   useContext,
   useEffect,
   useState,
+  useRef,
   ReactNode,
 } from "react";
 import {
@@ -41,6 +41,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
     total: 0,
   });
   const [loading, setLoading] = useState(true);
+
+  // marca quando a inicialização terminou (evita sobrescrever localStorage antes da leitura)
+  const initialLoadedRef = useRef(false);
 
   const productAPI = axios.create({
     baseURL: process.env.NEXT_PUBLIC_API_URL,
@@ -118,8 +121,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
     // 1) se variantObj.variantAttribute existe (modelo Prisma), pode conter imagens
     if (variantObj?.variantAttribute && Array.isArray(variantObj.variantAttribute)) {
       selectedOptions = variantObj.variantAttribute.map((a: any) => {
-        // cada variantAttribute pode ter relação variantAttributeImage[]
-        // procurar imagens: a.variantAttributeImage[*].url ou a.existingImages
         let optImage = null;
         if (Array.isArray(a?.variantAttributeImage) && a.variantAttributeImage.length > 0) {
           optImage = extractUrl(a.variantAttributeImage[0]?.url ?? a.variantAttributeImage[0]);
@@ -145,7 +146,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
             const parts = o.split(":").map((s) => s.trim());
             return { name: parts[0] ?? "Opção", value: parts[1] ?? o, image: null };
           }
-          // se houver imagem atrelada à opção
           const optImg =
             extractUrl(o.image) ||
             extractUrl(o.img) ||
@@ -164,7 +164,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
       if (opt.image) attributeImagesSet.add(opt.image);
     });
 
-    // adicional: verificar se variantObj.variantAttributeImage (lista geral) existe
     if (variantObj?.productVariantImage && Array.isArray(variantObj.productVariantImage)) {
       variantObj.productVariantImage.forEach((pi: any) => {
         const url = extractUrl(pi?.url ?? pi);
@@ -172,7 +171,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
       });
     }
 
-    // procurar imagens atreladas ao variantAttribute (sevieram em outro formato)
     if (variantObj?.variantAttribute && Array.isArray(variantObj.variantAttribute)) {
       variantObj.variantAttribute.forEach((a: any) => {
         if (Array.isArray(a.variantAttributeImage)) {
@@ -192,7 +190,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
     const attributeImages = Array.from(attributeImagesSet);
 
-    // build normalized
     const normalized: CartItem = {
       id: raw.id ?? raw.item_id ?? `${Date.now()}-${Math.random()}`,
       product_id: raw.product_id ?? raw.productId ?? productObj?.id ?? "",
@@ -219,11 +216,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
     return normalized;
   }
 
-  // load cart
+  // load cart (inicial)
   useEffect(() => {
+    let mounted = true;
     async function load() {
       try {
         const backendCart = await fetchCart();
+        if (!mounted) return;
         if (backendCart && Array.isArray(backendCart.items)) {
           backendCart.items = backendCart.items.map(normalizeItem);
           backendCart.subtotal = Number(backendCart.subtotal ?? backendCart.items.reduce((s: any, it: any) => s + (it.price ?? 0) * (it.quantity ?? 0), 0));
@@ -231,36 +230,49 @@ export function CartProvider({ children }: { children: ReactNode }) {
         }
         setCart(backendCart ?? { id: undefined, items: [], subtotal: 0, shippingCost: 0, total: 0 });
       } catch {
-        const guest = localStorage.getItem("guest_cart");
-        if (guest) {
-          try {
+        // fallback guest_cart
+        try {
+          const guest = localStorage.getItem("guest_cart");
+          if (guest) {
             const parsed = JSON.parse(guest);
             parsed.items = (parsed.items || []).map(normalizeItem);
             parsed.subtotal = Number(parsed.subtotal ?? parsed.items.reduce((s: any, it: any) => s + (it.price ?? 0) * (it.quantity ?? 0), 0));
             parsed.total = Number(parsed.total ?? parsed.subtotal ?? 0);
-            setCart(parsed);
-          } catch {
-            setCart({ id: undefined, items: [], subtotal: 0, shippingCost: 0, total: 0 });
+            if (mounted) setCart(parsed);
+          } else {
+            if (mounted) setCart({ id: undefined, items: [], subtotal: 0, shippingCost: 0, total: 0 });
           }
-        } else {
-          setCart({ id: undefined, items: [], subtotal: 0, shippingCost: 0, total: 0 });
+        } catch {
+          if (mounted) setCart({ id: undefined, items: [], subtotal: 0, shippingCost: 0, total: 0 });
         }
       } finally {
+        // marca que a leitura inicial terminou — só agora o efeito de persistência pode gravar
+        initialLoadedRef.current = true;
         setLoading(false);
       }
     }
     load();
+    return () => { mounted = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // persist guest cart
+  // persist guest cart NO localStorage — Somente depois do carregamento inicial
   useEffect(() => {
-    if (!cart?.id) {
-      try {
-        localStorage.setItem("guest_cart", JSON.stringify(cart));
-      } catch {
-        // ignore
+    if (!initialLoadedRef.current) return; // evita sobrescrever antes da leitura
+    try {
+      if (!cart?.id) {
+        // se o carrinho foi esvaziado por ação do usuário (clearCart), remove a chave explicitamente
+        if (!cart.items || cart.items.length === 0) {
+          localStorage.removeItem("guest_cart");
+        } else {
+          localStorage.setItem("guest_cart", JSON.stringify(cart));
+        }
+      } else {
+        // se carrinho associado ao usuário (cart.id existe), não persistimos no guest_cart
+        localStorage.removeItem("guest_cart");
       }
+    } catch {
+      // ignore
     }
   }, [cart]);
 
@@ -292,7 +304,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
             chosenVariant = prod.variants.find((v: any) => v.id === variantId) ?? null;
           }
 
-          // variant image (try several places)
           const variantImage =
             extractUrl(chosenVariant?.productVariantImage) ||
             extractUrl(chosenVariant?.image) ||
@@ -302,7 +313,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
             extractUrl(prod?.images) ||
             "";
 
-          // selectedOptions from variant
           let selectedOptions: SelectedOption[] = [];
           if (chosenVariant?.variantAttribute && Array.isArray(chosenVariant.variantAttribute)) {
             selectedOptions = chosenVariant.variantAttribute.map((a: any) => {
@@ -327,7 +337,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
             selectedOptions = prod.selected_options.map((o: any) => ({ name: o.name ?? "Opção", value: o.value ?? String(o.value ?? ""), image: null }));
           }
 
-          // attributeImages: collect from selectedOptions images and variant/product images
           const attributeImagesSet = new Set<string>();
           selectedOptions.forEach((s) => { if (s.image) attributeImagesSet.add(s.image); });
           if (chosenVariant?.variantAttribute) {
@@ -427,6 +436,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
         setCart(emptied);
       } else {
         setCart({ id: undefined, items: [], subtotal: 0, shippingCost: 0, total: 0 });
+        // remover explicitamente o guest_cart quando usuário limpa
+        try { localStorage.removeItem("guest_cart"); } catch { }
       }
     } finally {
       setLoading(false);

@@ -13,7 +13,8 @@ const PUBLIC_PATHS = [
     '/recover_password_customer',
     '/produto',
     '/busca',
-    '/carrinho'
+    '/carrinho',
+    '/favoritos'
     // se você tiver mais rotas públicas, adicione aqui
 ]
 

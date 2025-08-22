@@ -3,12 +3,13 @@ import { useTheme } from "@/app/contexts/ThemeContext";
 import { useContext } from "react";
 import Image from "next/image";
 import { FiChevronLeft } from "react-icons/fi";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL!;
 
 export function NavbarCheckout() {
 
+    const router = useRouter();
     const { colors } = useTheme();
     const { configs } = useContext(AuthContextStore);
 
@@ -17,10 +18,10 @@ export function NavbarCheckout() {
             className="flex items-center justify-between bg-white px-4 py-3 shadow-sm"
             style={{ background: colors?.fundo_do_menu || "#000" }}
         >
-            <Link href="/" className="flex items-center text-white">
+            <div onClick={() => router.back()} className="flex items-center text-white cursor-pointer">
                 <FiChevronLeft className="mr-2 text-xl" />
                 VOLTAR
-            </Link>
+            </div>
             <div>
                 <Image
                     src={`${API_URL}/files/${configs?.logo}`}

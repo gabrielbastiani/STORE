@@ -1,5 +1,6 @@
 'use client';
 
+import { Metadata, ResolvingMetadata } from "next";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -15,10 +16,85 @@ import { useCart } from "@/app/contexts/CartContext";
 import StoreLayout from "@/app/components/layouts/storeLayout";
 import { SlideBannerClient } from "@/app/components/slideBannerClient";
 import { PublicationSidebarClient } from "@/app/components/publicationSidebarClient";
+import MarketingPopup from "@/app/components/popups/marketingPopup";
+
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+const STORE_URL = process.env.NEXT_PUBLIC_URL_STORE;
+
+/* export async function generateMetadata(
+    parent: ResolvingMetadata
+): Promise<Metadata> {
+    try {
+        const apiClient = setupAPIClient();
+        const response = await apiClient.get('/configuration_ecommerce/get_configs');
+        const { data } = await apiClient.get(`/seo/get_page?page=Produtos em uma determinada categoria`);
+
+        const previousImages = (await parent).openGraph?.images || [];
+
+        const ogImages = data?.ogImages?.map((image: string) => ({
+            url: new URL(`/files/${image}`, API_URL).toString(),
+            width: Number(data.ogImageWidth) || 1200,
+            height: data.ogImageHeight || 630,
+            alt: data.ogImageAlt || 'Produtos em uma determinada categoria da loja',
+        })) || [];
+
+        const twitterImages = data?.twitterImages?.map((image: string) => ({
+            url: new URL(`/files/${image}`, API_URL).toString(),
+            width: Number(data.ogImageWidth) || 1200,
+            height: data.ogImageHeight || 630,
+            alt: data.ogImageAlt || 'Produtos em uma determinada categoria da loja',
+        })) || [];
+
+        const faviconUrl = response.data.favicon
+            ? new URL(`/files/${response.data.favicon}`, API_URL).toString()
+            : "../../../favicon.ico";
+
+        return {
+            title: data?.title || 'Produtos em uma determinada categoria da loja',
+            description: data?.description || 'Conheça as categorias da nossa loja',
+            metadataBase: new URL(STORE_URL!),
+            robots: {
+                follow: true,
+                index: true
+            },
+            icons: {
+                icon: faviconUrl
+            },
+            openGraph: {
+                title: data?.ogTitle || 'Produtos em uma determinada categoria da loja',
+                description: data?.ogDescription || 'Conheça os artigos da nossa loja...',
+                images: [
+                    ...ogImages,
+                    ...previousImages,
+                ],
+                locale: 'pt_BR',
+                siteName: response.data.name_blog || 'Produtos em uma determinada categoria da loja',
+                type: "website"
+            },
+            twitter: {
+                card: 'summary_large_image',
+                title: data?.twitterTitle || 'Produtos em uma determinada categoria da loja',
+                description: data?.twitterDescription || 'Categorias da nossa loja...',
+                images: [
+                    ...twitterImages,
+                    ...previousImages,
+                ],
+                creator: data?.twitterCreator || '@perfil_twitter',
+            },
+            keywords: data?.keywords || [],
+        };
+    } catch (error) {
+        console.error('Erro ao gerar metadados:', error);
+        return {
+            title: "Loja",
+            description: "Conheça a loja",
+        };
+    }
+} */
 
 export default function CategoryPageClient() {
+
     const paramsAny = useParams() as any;
     const searchParams = useSearchParams();
     const { colors } = useTheme();
@@ -34,6 +110,7 @@ export default function CategoryPageClient() {
 
     const apiClient = setupAPIClient();
 
+    const [nameCategory, setNameCategory] = useState("");
     const [loading, setLoading] = useState(false);
     const [products, setProducts] = useState<ProductFormData[]>([]);
     const [total, setTotal] = useState(0);
@@ -135,6 +212,19 @@ export default function CategoryPageClient() {
     }
 
     useEffect(() => {
+        try {
+            const apiClient = setupAPIClient();
+            async function loadName() {
+                const response = await apiClient.get(`/category/name?slug=${slug}`);
+                setNameCategory(response.data?.name);
+            }
+            loadName();
+        } catch (error) {
+            console.error("Erro ao carregar categoria.");
+        }
+    }, [slug]);
+
+    useEffect(() => {
         const rawFilters = searchParams.get("filters");
         if (rawFilters) {
             try {
@@ -225,7 +315,7 @@ export default function CategoryPageClient() {
                                 Foram encontrados <strong>{total}</strong> produtos
                             </p>
                             <h1 className="text-2xl font-bold mt-1 text-black">
-                                {(slug ?? "").replace("-", " ")}
+                                {nameCategory}
                             </h1>
                         </div>
 
@@ -305,6 +395,8 @@ export default function CategoryPageClient() {
                     </div>
                 </section>
             </div>
+
+            <MarketingPopup position="POPUP" local="Pagina_produtos_categoria" />
         </StoreLayout>
     );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useMemo, useContext, useCallback } from "react";
+import { useFavorites } from "@/app/contexts/FavoritesContext";
 import { useRouter } from "next/navigation";
 import { toast } from "react-toastify";
 import { useForm } from "react-hook-form";
@@ -29,8 +30,10 @@ import ShippingEstimator, { ShippingOption } from "@/app/components/pageProduct/
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 const STORAGE_KEY = "recently_viewed";
-const FAVORITES_KEY = "favorites";
 
+/**
+ * ProductPage completo — integra sua lógica original e corrige favoritos/localStorage.
+ */
 export default function ProductPage({ params }: { params: Promise<{ productSlug: string }> }) {
 
   const router = useRouter();
@@ -38,6 +41,7 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
 
   const { signIn, isAuthenticated, user } = useContext(AuthContextStore);
   const { addItem } = useCart();
+  const { isFavorite, toggle } = useFavorites();
 
   const [product, setProduct] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,7 +52,6 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
   const [expandedDescription, setExpandedDescription] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"description" | "specifications" | "reviews">("description");
   const [isZoomed, setIsZoomed] = useState(false);
-  const [isFavorite, setIsFavorite] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [cognitiveValid, setCognitiveValid] = useState(false);
@@ -110,7 +113,8 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
                   if (!imagesMap[attr.key]) imagesMap[attr.key] = {};
                   if (!imagesMap[attr.key][attr.value]) imagesMap[attr.key][attr.value] = url;
                 }
-              }})
+              }
+            });
           });
         }
         const attrImgs: Record<string, { value: string; imageUrl: string }[]> = {};
@@ -137,7 +141,7 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
           setTogetherQty(initQty);
         }
 
-        // se o servidor já retornar avaliações, normaliza para número
+        // normalize reviews
         if (Array.isArray(prod.reviews)) {
           const ratingEnumToNumber = (r: any) => {
             if (typeof r === 'number') return r;
@@ -176,63 +180,7 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
     }
   }, [product]);
 
-  // Verificar favoritos
-  useEffect(() => {
-    if (!product?.id) return;
-
-    const favorites = JSON.parse(localStorage.getItem(FAVORITES_KEY) || "[]");
-    setIsFavorite(favorites.includes(product.id));
-
-    if (isAuthenticated && user?.id) {
-      checkServerFavorites();
-    }
-  }, [product?.id, isAuthenticated, user]);
-
-  const checkServerFavorites = async () => {
-    try {
-      const api = setupAPIClient();
-      const response = await api.get(`/favorite/customer/pageProduct?customer_id=${user?.id}`);
-      const serverFavorites = response.data.map((fav: any) => fav.product_id);
-      setIsFavorite(serverFavorites.includes(product?.id));
-    } catch (error) {
-      console.error("Erro ao verificar favoritos:", error);
-    }
-  };
-
-  // Manipulação favoritos, compartilhamento, reviews, login
-  const toggleFavorite = async () => {
-    if (!product?.id) return;
-
-    try {
-      const api = setupAPIClient();
-      const newIsFavorite = !isFavorite;
-      setIsFavorite(newIsFavorite);
-
-      let favorites = JSON.parse(localStorage.getItem(FAVORITES_KEY) || "[]");
-      if (newIsFavorite) {
-        favorites = [...favorites, product.id];
-      } else {
-        favorites = favorites.filter((id: string) => id !== product.id);
-      }
-      localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
-
-      if (isAuthenticated) {
-        if (newIsFavorite) {
-          await api.post('/favorite/create', {
-            customer_id: user?.id,
-            product_id: product.id
-          });
-        } else {
-          await api.delete(`/favorite/delete?customer_id=${user?.id}&product_id=${product.id}`);
-        }
-      }
-    } catch (error) {
-      console.error("Erro ao atualizar favoritos:", error);
-      setIsFavorite(!isFavorite);
-      toast.error("Erro ao atualizar favoritos");
-    }
-  };
-
+  // compartilhar, reviews, login etc (mantive sua implementação original)
   const shareProduct = (platform: string) => {
     if (!product) return;
 
@@ -258,9 +206,7 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
     setShowShareMenu(false);
   };
 
-  // dentro do ProductPage component (substitua a função submitReview existente)
   const submitReview = async (data: ReviewFormData) => {
-    console.log("submitReview payload:", data); // <<< importante para debug
     const api = setupAPIClient();
 
     if (!isAuthenticated || !product?.id) {
@@ -271,7 +217,7 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
     try {
       const reviewData = {
         product_id: product.id,
-        rating: data.rating, // número 1-5
+        rating: data.rating,
         comment: data.comment,
         customer_id: user?.id,
         nameCustomer: user?.name
@@ -280,7 +226,6 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
       const response = await api.post('/review/create', reviewData);
       const createdReview = response.data;
 
-      // converte enum do servidor para número para exibir localmente
       const ratingEnumToNumber = (r: any) => {
         if (typeof r === 'number') return r;
         if (!r) return 0;
@@ -302,7 +247,7 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
 
       setReviews(prev => [...prev, normalised]);
       toast.success('Avaliação enviada com sucesso!');
-      resetReview(); // limpa o form
+      resetReview();
       setShowReviewForm(false);
     } catch (error) {
       console.error("Erro ao enviar avaliação:", error);
@@ -333,11 +278,10 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
     }
   };
 
-  // Helpers
-  const formatPrice = (v: number) =>
-    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+  // Helpers e outras lógicas de variants/imagens/relatedProducts — mantive a sua implementação original (abaixo, repetida/adaptada)
 
-  // Variants helpers
+  const formatPrice = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+
   const allOptions = useMemo(() => {
     if (!product?.variants?.length) return {};
 
@@ -385,7 +329,6 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
     return availableMap;
   }, [allOptions, selectedAttributes, product]);
 
-  // Ao selecionar atributo (usado pelo VariantsSelector)
   const handleAttributeSelect = (key: string, value: string) => {
     if (!availableOptions[key]?.has(value)) return;
 
@@ -402,7 +345,7 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
       matchedVariant.variantAttribute?.forEach((a: any) => { syncedAttributes[a.key] = a.value; });
       setSelectedAttributes(syncedAttributes);
       setSelectedImageIndex(0);
-      setOverrideMainImage(null); // reset override para mostrar imagem da variante
+      setOverrideMainImage(null);
     } else {
       setSelectedAttributes(newAttributes);
     }
@@ -422,15 +365,11 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
     })) || [];
   };
 
-  // Única fonte de verdade para as imagens
   const currentImages = getCurrentImages();
 
-  // Stock & discount logic
   const hasDiscount = !!selectedVariant && selectedVariant.price_per! < selectedVariant.price_of!;
   const discount = hasDiscount ? Math.round(((selectedVariant.price_of! - selectedVariant.price_per!) / selectedVariant.price_of!) * 100) : 0;
-  const stockAvailable = selectedVariant?.stock != null ? selectedVariant.stock : product?.stock ?? 0;
 
-  // Produtos relacionados (mesma lógica consolidada)
   const relatedProducts: any[] = (() => {
     if (!product) return [];
 
@@ -467,42 +406,21 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
         ...(product.childRelations?.map((r: any) => r.childProduct) || []),
       ];
       gathered.push(...fromDirectMaps);
-    } catch (e) {
-      // noop
-    }
+    } catch (e) { }
 
     const seen = new Set<string>();
     const filtered: any[] = [];
 
     for (const p of gathered) {
       if (!p || !p.id) continue;
-      if (product?.id && p.id === product.id) continue; // remove próprio produto
-      if (seen.has(p.id)) continue; // dedupe
+      if (product?.id && p.id === product.id) continue;
+      if (seen.has(p.id)) continue;
       seen.add(p.id);
       filtered.push(p);
     }
 
     return filtered;
   })();
-
-  // Trocar quantidade
-  const handleQuantityChange = (delta: number) =>
-    setQuantity(q => Math.min(Math.max(q + delta, 1), (selectedVariant?.stock ?? product?.stock ?? 1)));
-
-  // Adicionar ao carrinho (envia variant_id quando existir)
-  const handleAddToCart = async () => {
-    if (!product) return;
-    setAdding(true);
-    try {
-      await addItem(product.id, quantity, selectedVariant?.id ?? null);
-      toast.success(`"${product.name}" adicionado!`);
-      setQuantity(1);
-    } catch (err) {
-      toast.error("Erro ao adicionar.");
-    } finally {
-      setAdding(false);
-    }
-  };
 
   // Compre junto: changeTogetherQty usa stock do item específico
   function changeTogetherQty(id: string, delta: number) {
@@ -515,6 +433,13 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
       return { ...prev, [id]: next };
     });
   }
+
+  const productIsFavorite = product?.id ? isFavorite(product.id) : false;
+
+  const handleToggleFavorite = async () => {
+    if (!product?.id) return;
+    await toggle(product.id);
+  };
 
   if (loading) {
     return (
@@ -609,8 +534,8 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
                     setAdding(false);
                   }
                 }}
-                isFavorite={isFavorite}
-                toggleFavorite={toggleFavorite}
+                isFavorite={productIsFavorite}
+                toggleFavorite={handleToggleFavorite}
                 showShareMenu={showShareMenu}
                 setShowShareMenu={setShowShareMenu}
                 shareProduct={shareProduct}

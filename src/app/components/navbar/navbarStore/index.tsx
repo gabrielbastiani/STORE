@@ -1,9 +1,11 @@
-"use client"
+"use client";
 
 import { setupAPIClient } from "@/services/api";
 import { AuthContextStore } from "@/app/contexts/AuthContextStore";
+import { useFavorites } from "@/app/contexts/FavoritesContext";
 import { useCart } from "@/app/contexts/CartContext";
 import { useTheme } from "@/app/contexts/ThemeContext";
+import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
@@ -17,7 +19,9 @@ import {
     FiTrash2,
     FiPlus,
     FiMinus,
+    FiHeart,
 } from "react-icons/fi";
+import { AiFillHeart } from "react-icons/ai";
 import {
     ChangeEvent,
     KeyboardEvent,
@@ -57,18 +61,19 @@ type Store = {
 export function NavbarStore() {
 
     const router = useRouter();
-
     const { colors } = useTheme();
-    const { isAuthenticated, loadingAuth, user, configs } = useContext(AuthContextStore);
+    const { isAuthenticated, loadingAuth, user, configs } =
+        useContext(AuthContextStore);
     const {
-        cart,         // { id, items: CartItem[], subtotal, shippingCost, total }
-        cartCount,    // número total de produtos
+        cart, // { id, items: CartItem[], subtotal, shippingCost, total }
+        cartCount, // número total de produtos
         loading: cartLoading,
-        updateItem,   // (itemId: string, qty: number) => Promise<void>
-        removeItem,   // (itemId: string) => Promise<void>
+        updateItem, // (itemId: string, qty: number) => Promise<void>
+        removeItem, // (itemId: string) => Promise<void>
     } = useCart();
+    const { favoritesCount } = useFavorites();
 
-    // estado para exibir mini‑cart ao hover
+    // estado para exibir mini-cart ao hover
     const [showCartPopup, setShowCartPopup] = useState(false);
 
     // formata BRL
@@ -95,10 +100,7 @@ export function NavbarStore() {
     useEffect(() => {
         function handleClickOutside(e: MouseEvent) {
             // Fecha busca
-            if (
-                searchRef.current &&
-                !searchRef.current.contains(e.target as Node)
-            ) {
+            if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
                 setShowHistory(false);
                 setSearchResults([]);
                 setSelectedIndex(-1);
@@ -204,13 +206,14 @@ export function NavbarStore() {
     };
 
     function removerAcentos(s: any) {
-            return s.normalize('NFD')
-                .replace(/[\u0300-\u036f]/g, "")
-                .toLowerCase()
-                .replace(/ +/g, "-")
-                .replace(/-{2,}/g, "-")
-                .replace(/[/]/g, "-");
-        }
+        return s
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .replace(/ +/g, "-")
+            .replace(/-{2,}/g, "-")
+            .replace(/[/]/g, "-");
+    }
 
     const buildUrl = (item: MenuItemDTO) => {
         if (item.type === "CATEGORY") return `/categoria/${removerAcentos(item.label)}`;
@@ -229,9 +232,7 @@ export function NavbarStore() {
     }) => {
         const [open, setOpen] = useState(false);
         const submenuPosition =
-            depth === 0
-                ? { top: "100%", left: 0 }
-                : { top: 0, left: "100%" };
+            depth === 0 ? { top: "100%", left: 0 } : { top: 0, left: "100%" };
 
         return (
             <li
@@ -264,8 +265,7 @@ export function NavbarStore() {
                         )}
                         {item.icon && (
                             <div
-                                className={`w-48 h-auto ${item.children.length ? "" : "p-4"
-                                    }`}
+                                className={`w-48 h-auto ${item.children.length ? "" : "p-4"}`}
                             >
                                 <Image
                                     src={`${API_URL}/files/${item.icon}`}
@@ -284,9 +284,9 @@ export function NavbarStore() {
 
     // --- Mobile Menu Item ---
     const toggleSubmenu = (itemId: string) => {
-        setOpenSubmenus(prev => ({
+        setOpenSubmenus((prev) => ({
             ...prev,
-            [itemId]: !prev[itemId]
+            [itemId]: !prev[itemId],
         }));
     };
 
@@ -300,7 +300,6 @@ export function NavbarStore() {
         return items.map((item) => (
             <div key={item.id} className="mb-1">
                 <div className="flex items-center justify-between">
-                    {/* Item clicável para navegação */}
                     <div
                         className={`flex-1 py-3 px-4 rounded-lg cursor-pointer ${openSubmenus[item.id]
                             ? "bg-gray-100 text-orange-600"
@@ -311,7 +310,6 @@ export function NavbarStore() {
                         {item.label}
                     </div>
 
-                    {/* Botão para expandir submenu */}
                     {item.children.length > 0 && (
                         <button
                             className="p-3 text-gray-500"
@@ -488,7 +486,7 @@ export function NavbarStore() {
                     </form>
                 </div>
 
-                {/* Ícones usuário/carrinho */}
+                {/* Ícones usuário/carrinho/favoritos */}
                 <div className="flex items-center space-x-4">
                     <button
                         className="md:hidden text-white"
@@ -500,6 +498,45 @@ export function NavbarStore() {
                     >
                         <FiSearch size={24} />
                     </button>
+
+                    {/* Favoritos - mobile (apenas ícone), com badge */}
+                    <button
+                        className="md:hidden text-white p-1 relative"
+                        onClick={() => {
+                            router.push("/favoritos");
+                            setIsMobileMenuOpen(false);
+                            setOpenSubmenus({});
+                        }}
+                        aria-label="Favoritos"
+                        title="Favoritos"
+                    >
+                        {favoritesCount > 0 ? (
+                            <AiFillHeart size={20} className="text-red-500" />
+                        ) : (
+                            <FiHeart size={20} className="text-white" />
+                        )}
+                        {favoritesCount > 0 && <span className="absolute -top-2 -left-2 bg-red-600 text-white text-xs rounded-full px-1 min-w-[18px] text-center leading-4">{favoritesCount > 99 ? "99+" : favoritesCount}</span>}
+                    </button>
+
+                    {/* Favoritos - desktop (ícone + label) - inserido entre busca e login */}
+                    <Link
+                        href="/favoritos"
+                        className="hidden md:flex items-center gap-2 text-white hover:text-gray-200 cursor-pointer relative"
+                        onClick={() => {
+                            setIsMobileMenuOpen(false);
+                            setOpenSubmenus({});
+                        }}
+                        aria-label="Favoritos"
+                    >
+                        {favoritesCount > 0 ? (
+                            <AiFillHeart size={20} className="text-red-500" />
+                        ) : (
+                            <FiHeart size={20} className="text-white" />
+                        )}
+                        {/* badge */}
+                        {favoritesCount > 0 && <span className="absolute -top-2 -left-2 bg-red-600 text-white text-xs rounded-full px-1 min-w-[18px] text-center leading-4">{favoritesCount > 99 ? "99+" : favoritesCount}</span>}
+                    </Link>
+
                     {!loadingAuth &&
                         (isAuthenticated ? (
                             <div
@@ -657,6 +694,7 @@ export function NavbarStore() {
                     </div>
                 </div>
             </div>
+
             {/* Menu Mobile */}
             {isMobileMenuOpen && (
                 <div
@@ -668,9 +706,7 @@ export function NavbarStore() {
                             <h3 className="font-bold text-lg mb-2">Menu</h3>
                         </div>
 
-                        <div className="space-y-1">
-                            {renderMobileMenuItems(menuItems)}
-                        </div>
+                        <div className="space-y-1">{renderMobileMenuItems(menuItems)}</div>
                     </div>
                 </div>
             )}

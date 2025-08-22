@@ -9,6 +9,7 @@ import { PrivacyProvider } from "./contexts/PrivacyContext";
 import PrivacyBanner from "./components/policePrivacy/privacyBanner";
 import PrivacySettingsModal from "./components/policePrivacy/privacySettingsModal";
 import { CartProvider } from "./contexts/CartContext";
+import { FavoritesProvider } from "./contexts/FavoritesContext";
 
 export function Providers({ children }: { children: React.ReactNode }) {
     return (
@@ -17,8 +18,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
                 <NextTopLoader color="#ff4444" showSpinner={false} />
                 <PrivacyProvider>
                     <AuthProviderStore>
-                        <ToastContainer autoClose={5000} />
-                        {children}
+                        <FavoritesProvider>
+                            <ToastContainer autoClose={5000} />
+                            {children}
+                        </FavoritesProvider>
                     </AuthProviderStore>
                     <PrivacyBanner />
                     <PrivacySettingsModal />
