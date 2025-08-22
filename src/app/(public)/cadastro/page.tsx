@@ -6,11 +6,14 @@ import React, {
     useEffect,
     ChangeEvent,
     FormEvent,
+    useContext,
 } from "react";
 import { useRouter } from "next/navigation";
 import { NavbarCheckout } from "@/app/components/navbar/navbarCheckout";
 import { FooterCheckout } from "@/app/components/footer/footerCheckout";
 import { toast } from "react-toastify";
+import { useCart } from "@/app/contexts/CartContext";
+import { AuthContextStore } from "@/app/contexts/AuthContextStore";
 
 interface Address {
     logradouro: string;
@@ -20,6 +23,10 @@ interface Address {
 }
 
 export default function Cadastro() {
+
+    const { cartCount } = useCart();
+    const cartOk = cartCount >= 1;
+    const { signIn } = useContext(AuthContextStore)
 
     const api = setupAPIClient();
 
@@ -146,6 +153,12 @@ export default function Cadastro() {
         }));
     };
 
+    type SignInResult = boolean | { success: boolean; message?: string };
+
+    function isSignInObject(v: SignInResult): v is { success: boolean; message?: string } {
+        return typeof v === 'object' && v !== null && 'success' in v;
+    }
+
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
         setLoading(true);
@@ -207,7 +220,28 @@ export default function Cadastro() {
             );
 
             toast.success("Cadastro com sucesso");
-            router.push("/fechamento");
+
+            const dataUser = { email: userPayload.email, password: userPayload.password };
+            const result = (await signIn(dataUser)) as SignInResult; // assegure o tipo localmente
+
+            // normaliza para booleano
+            const success = typeof result === 'boolean' ? result : Boolean(result.success);
+
+            if (!success) {
+                const message =
+                    isSignInObject(result) && result.message ? result.message : 'Credenciais inválidas';
+                toast.error(message);
+                return;
+            }
+
+            // redirecionamento prioritário para finalizar pedido se houver itens no carrinho
+            if (cartOk) {
+                router.replace('/finalizar-pedido'); // replace evita voltar ao login com back
+                return;
+            }
+
+            router.replace('/login');
+
         } catch (err: any) {
             console.error(err);
             const msg =

@@ -362,7 +362,7 @@ export default function CategoryPageClient() {
                         ))}
                     </div>
 
-                    <div className="mt-6 flex items-center justify-center gap-2">
+                    <div className="mt-6 flex items-center justify-center gap-2 text-black">
                         <button
                             onClick={() => {
                                 if (page > 1) {
@@ -371,7 +371,7 @@ export default function CategoryPageClient() {
                                     if (slug) loadProducts({ page: page - 1 });
                                 }
                             }}
-                            className="px-3 py-2 border rounded disabled:opacity-50"
+                            className="px-3 py-2 border rounded disabled:opacity-50 bg-orange-500 text-white"
                             disabled={page === 1}
                         >
                             Anterior
@@ -387,7 +387,7 @@ export default function CategoryPageClient() {
                                     if (slug) loadProducts({ page: page + 1 });
                                 }
                             }}
-                            className="px-3 py-2 border rounded"
+                            className="px-3 py-2 border rounded bg-orange-500 text-white"
                             disabled={page >= pagesCount}
                         >
                             Próxima

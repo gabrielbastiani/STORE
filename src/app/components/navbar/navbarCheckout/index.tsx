@@ -4,6 +4,7 @@ import { useContext } from "react";
 import Image from "next/image";
 import { FiChevronLeft } from "react-icons/fi";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL!;
 
@@ -23,12 +24,14 @@ export function NavbarCheckout() {
                 VOLTAR
             </div>
             <div>
-                <Image
-                    src={`${API_URL}/files/${configs?.logo}`}
-                    alt={configs?.name || "loja"}
-                    width={120}
-                    height={32}
-                />
+                <Link href="/">
+                    <Image
+                        src={`${API_URL}/files/${configs?.logo}`}
+                        alt={configs?.name || "loja"}
+                        width={120}
+                        height={32}
+                    />
+                </Link>
             </div>
             <span className="text-sm text-white">Ambiente 100% seguro</span>
         </header>

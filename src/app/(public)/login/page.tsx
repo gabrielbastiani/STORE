@@ -11,6 +11,7 @@ import { AuthContextStore } from '@/app/contexts/AuthContextStore'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import z from 'zod'
+import { useCart } from '@/app/contexts/CartContext'
 
 const CognitiveChallenge = dynamic(
     () =>
@@ -42,6 +43,9 @@ type RecoverFormData = z.infer<typeof recoverSchema>
 export default function Login() {
 
     const router = useRouter()
+    const { cartCount } = useCart();
+    const cartOk = cartCount >= 1;
+
     const { signIn } = useContext(AuthContextStore)
 
     const [recoverMode, setRecoverMode] = useState(false)
@@ -69,35 +73,47 @@ export default function Login() {
     })
 
     // Envio do login
+    type SignInResult = boolean | { success: boolean; message?: string };
+
+    function isSignInObject(v: SignInResult): v is { success: boolean; message?: string } {
+        return typeof v === 'object' && v !== null && 'success' in v;
+    }
+
     async function onSubmitLogin(data: LoginFormData) {
         if (!cognitiveValid) {
-            toast.error('Complete o desafio de segurança antes de enviar')
-            return
+            toast.error('Complete o desafio de segurança antes de enviar');
+            return;
         }
 
-        setLoading(true)
-
-        const email = data?.email;
-        const password = data?.password;
+        setLoading(true);
 
         try {
-            let dataUser = {
-                email,
-                password
-            };
+            const dataUser = { email: data.email, password: data.password };
+            const result = (await signIn(dataUser)) as SignInResult; // assegure o tipo localmente
 
-            const success = await signIn(dataUser);
+            // normaliza para booleano
+            const success = typeof result === 'boolean' ? result : Boolean(result.success);
 
-            if (success) {
-                router.push('/meus-dados');
+            if (!success) {
+                const message =
+                    isSignInObject(result) && result.message ? result.message : 'Credenciais inválidas';
+                toast.error(message);
+                return;
             }
 
-            setLoading(false);
+            // redirecionamento prioritário para finalizar pedido se houver itens no carrinho
+            if (cartOk) {
+                router.replace('/finalizar-pedido'); // replace evita voltar ao login com back
+                return;
+            }
+
+            router.replace('/meus-dados');
         } catch (err: any) {
-            console.error(err)
-            toast.error('Erro ao autenticar')
+            console.error('Erro onSubmitLogin:', err);
+            const remoteMsg = err?.response?.data?.message ?? err?.message;
+            toast.error(remoteMsg || 'Erro ao autenticar');
         } finally {
-            setLoading(false)
+            setLoading(false);
         }
     }
 

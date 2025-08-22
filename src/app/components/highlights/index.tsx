@@ -22,6 +22,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
    - se não -> botão "Adicionar" com quantidade
    ---------------------------- */
 function HighlightsCard({ product }: { product: ProductFormData }) {
+    
     const { colors } = useTheme();
     const { addItem } = useCart();
     const [quantity, setQuantity] = useState<number>(1);

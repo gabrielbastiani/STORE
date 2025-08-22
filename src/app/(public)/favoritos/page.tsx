@@ -348,7 +348,7 @@ export default function Favoritos(): JSX.Element {
 
             {products.length === 0 ? (
               <div className="py-24 text-center">
-                <h2 className="text-2xl font-semibold">Nenhum favorito ainda</h2>
+                <h2 className="text-2xl font-semibold text-black">Nenhum favorito ainda</h2>
                 <p className="mt-2 text-sm text-gray-500">Adicione produtos aos seus favoritos para vê-los aqui.</p>
                 <Link href="/" className="inline-block mt-6 px-6 py-3 rounded-2xl border border-transparent font-medium shadow-sm text-white bg-red-600 hover:bg-red-700">
                   Continuar comprando

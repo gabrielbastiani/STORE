@@ -1,7 +1,6 @@
-'use client';
+'use client'
 
-import React, { ChangeEvent, useCallback, useEffect, useState } from "react";
-import Link from "next/link";
+import React, { ChangeEvent, useCallback, useContext, useEffect, useState } from "react";
 import Image from "next/image";
 import { FiTrash2, FiPlus, FiMinus, FiX } from "react-icons/fi";
 import { useTheme } from "@/app/contexts/ThemeContext";
@@ -12,6 +11,8 @@ import { NavbarCheckout } from "@/app/components/navbar/navbarCheckout";
 import { FooterCheckout } from "@/app/components/footer/footerCheckout";
 import axios from "axios";
 import { SelectedOption } from "Types/types";
+import { useRouter } from "next/navigation";
+import { AuthContextStore } from "@/app/contexts/AuthContextStore";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -23,8 +24,13 @@ interface ShippingOption {
 }
 
 export default function CartPage() {
+
+  const router = useRouter();
+  const { isAuthenticated } = useContext(AuthContextStore);
   const { colors } = useTheme();
-  const { cart, loading: cartLoading, updateItem, removeItem, clearCart } = useCart();
+  const { cart, loading: cartLoading, updateItem, removeItem, clearCart, cartCount } = useCart();
+
+  const cartOk = cartCount >= 1;
 
   // CEP / frete
   const [cep, setCep] = useState("");
@@ -433,13 +439,22 @@ export default function CartPage() {
 
           {/* Ações finais */}
           <div className="space-y-2">
-            <button onClick={() => clearCart()} className="w-full bg-gray-800 hover:bg-gray-900 text-white py-3 rounded">LIMPAR CARRINHO</button>
-            <button className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded">FINALIZAR COMPRA</button>
-            <Link href="/" className="block text-center text-gray-800 hover:underline">Continuar Comprando</Link>
+            {cartOk ?
+              <>
+                <button onClick={() => clearCart()} className="w-full bg-gray-800 hover:bg-gray-900 text-white py-3 rounded">LIMPAR CARRINHO</button>
+                {isAuthenticated && cartOk ?
+                  <button onClick={() => router.push('/finalizar-pedido')} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded">FINALIZAR COMPRA</button>
+                  :
+                  <button onClick={() => router.push('/login')} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded">FINALIZAR COMPRA</button>
+                }
+              </>
+              :
+              null
+            }
+            <button onClick={() => router.back()} className="w-full text-gray-800 hover:underline">Continuar Comprando</button>
           </div>
         </aside>
       </main>
-
       <FooterCheckout />
     </div>
   );
