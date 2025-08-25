@@ -497,105 +497,112 @@ export default function FinishOrderPage() {
     }
 
     // place order
-    async function handlePlaceOrder() {
-        if (!cart?.items || cart.items.length === 0) {
-            toast.error('Carrinho vazio.')
+    // apenas substitua a função existente handlePlaceOrder pelo trecho abaixo
+async function handlePlaceOrder() {
+    if (!cart?.items || cart.items.length === 0) {
+        toast.error('Carrinho vazio.')
+        return
+    }
+    if (!selectedShippingId) {
+        toast.error('Escolha uma opção de envio.')
+        return
+    }
+    if (!selectedPaymentId) {
+        toast.error('Escolha uma forma de pagamento.')
+        return
+    }
+
+    if (!isAuthenticated) {
+        if (!guestCustomer.name || !guestCustomer.email || !guestCustomer.phone) {
+            toast.error('Preencha nome, e-mail e telefone para prosseguir como visitante.')
             return
         }
-        if (!selectedShippingId) {
-            toast.error('Escolha uma opção de envio.')
+        if (!selectedAddressId) {
+            toast.error('Escolha ou adicione um endereço de entrega.')
             return
         }
-        if (!selectedPaymentId) {
-            toast.error('Escolha uma forma de pagamento.')
+    } else {
+        if (!selectedAddressId) {
+            toast.error('Escolha um endereço de entrega.')
             return
-        }
-
-        if (!isAuthenticated) {
-            if (!guestCustomer.name || !guestCustomer.email || !guestCustomer.phone) {
-                toast.error('Preencha nome, e-mail e telefone para prosseguir como visitante.')
-                return
-            }
-            if (!selectedAddressId) {
-                toast.error('Escolha ou adicione um endereço de entrega.')
-                return
-            }
-        } else {
-            if (!selectedAddressId) {
-                toast.error('Escolha um endereço de entrega.')
-                return
-            }
-        }
-
-        setPlacingOrder(true)
-        try {
-            const itemsForApi = (cart.items || []).map((it: CartItemType) => ({
-                product_id: it.product_id,
-                price: it.price,
-                quantity: it.quantity,
-                weight: it.weight ?? 0.1,
-                length: it.length ?? 10,
-                height: it.height ?? 2,
-                width: it.width ?? 10,
-                variant_id: it.variant_id ?? undefined,
-            }))
-
-            let payload: any = {
-                shippingId: selectedShippingId,
-                paymentId: selectedPaymentId,
-                items: itemsForApi,
-                customerNote: '',
-                couponCode: appliedCoupon ?? undefined,
-            }
-
-            if (isAuthenticated) {
-                payload.addressId = selectedAddressId
-            } else {
-                if (selectedAddressId?.startsWith('guest-')) {
-                    const localAddress = addresses.find((a) => a.id === selectedAddressId)
-                    if (!localAddress) throw new Error('Endereço inválido')
-                    payload.address = {
-                        street: localAddress.street,
-                        number: localAddress.number,
-                        neighborhood: localAddress.neighborhood,
-                        city: localAddress.city,
-                        state: localAddress.state,
-                        zipCode: localAddress.zipCode?.replace(/\D/g, ''),
-                        country: localAddress.country,
-                        complement: localAddress.complement,
-                        reference: localAddress.reference,
-                    }
-                } else {
-                    if (selectedAddressId) payload.addressId = selectedAddressId
-                }
-                payload.guestCustomer = guestCustomer
-            }
-
-            const resp = await api.post('/checkout/order', payload)
-            const data = resp.data ?? {}
-
-            if (data.paymentRedirectUrl) {
-                window.location.href = data.paymentRedirectUrl
-                return
-            }
-
-            if (data.paymentData) {
-                setLastPaymentData(data.paymentData)
-                setPaymentModalOpen(true)
-                clearCart()
-                router.push(`/order/success/${data.orderId}`)
-                return
-            }
-
-            clearCart()
-            router.push(`/order/success/${data.orderId}`)
-        } catch (err: any) {
-            console.error('Erro ao finalizar pedido', err)
-            toast.error(err?.response?.data?.message ?? 'Não foi possível finalizar o pedido.')
-        } finally {
-            setPlacingOrder(false)
         }
     }
+
+    setPlacingOrder(true)
+    try {
+        const itemsForApi = (cart.items || []).map((it: CartItemType) => ({
+            product_id: it.product_id,
+            price: it.price,
+            quantity: it.quantity,
+            weight: it.weight ?? 0.1,
+            length: it.length ?? 10,
+            height: it.height ?? 2,
+            width: it.width ?? 10,
+            variant_id: it.variant_id ?? undefined,
+        }))
+
+        // Recupera o objeto de shipping selecionado (raw) para enviar ao backend
+        const selectedShipping = shippingOptions.find(s => s.id === selectedShippingId)
+
+        let payload: any = {
+            shippingId: selectedShippingId,
+            paymentId: selectedPaymentId,
+            items: itemsForApi,
+            customerNote: '',
+            couponCode: appliedCoupon ?? undefined,
+            // **IMPORTANT**: send shippingCost and shippingRaw to avoid backend recalculation
+            shippingCost: currentFrete, // numero
+            shippingRaw: selectedShipping?.raw ?? selectedShipping ?? null,
+        }
+
+        if (isAuthenticated) {
+            payload.addressId = selectedAddressId
+        } else {
+            if (selectedAddressId?.startsWith('guest-')) {
+                const localAddress = addresses.find((a) => a.id === selectedAddressId)
+                if (!localAddress) throw new Error('Endereço inválido')
+                payload.address = {
+                    street: localAddress.street,
+                    number: localAddress.number,
+                    neighborhood: localAddress.neighborhood,
+                    city: localAddress.city,
+                    state: localAddress.state,
+                    zipCode: localAddress.zipCode?.replace(/\D/g, ''),
+                    country: localAddress.country,
+                    complement: localAddress.complement,
+                    reference: localAddress.reference,
+                }
+            } else {
+                if (selectedAddressId) payload.addressId = selectedAddressId
+            }
+            payload.guestCustomer = guestCustomer
+        }
+
+        const resp = await api.post('/checkout/order', payload)
+        const data = resp.data ?? {}
+
+        if (data.paymentRedirectUrl) {
+            window.location.href = data.paymentRedirectUrl
+            return
+        }
+
+        if (data.paymentData) {
+            setLastPaymentData(data.paymentData)
+            setPaymentModalOpen(true)
+            clearCart()
+            router.push(`/order/success/${data.orderId}`)
+            return
+        }
+
+        clearCart()
+        router.push(`/order/success/${data.orderId}`)
+    } catch (err: any) {
+        console.error('Erro ao finalizar pedido', err)
+        toast.error(err?.response?.data?.message ?? 'Não foi possível finalizar o pedido.')
+    } finally {
+        setPlacingOrder(false)
+    }
+}
 
     async function copyToClipboard(text?: string) {
         if (!text) return
