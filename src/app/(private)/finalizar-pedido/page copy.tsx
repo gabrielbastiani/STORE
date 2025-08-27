@@ -18,37 +18,6 @@ import { FooterCheckout } from '@/app/components/footer/footerCheckout'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? ''
 
-/**
- * Configurações ajustáveis
- */
-const MAX_INSTALLMENTS_BY_BRAND: Record<string, number> = {
-    visa: 21,
-    mastercard: 21,
-    amex: 12,
-    elo: 12,
-    hipercard: 12,
-    diners: 12,
-    discover: 12,
-    jcb: 12,
-    maestro: 12,
-    aura: 12,
-    unknown: 12,
-}
-const NO_INTEREST_MAX_BY_BRAND: Record<string, number> = {
-    visa: 12,
-    mastercard: 12,
-    amex: 6,
-    elo: 6,
-    hipercard: 6,
-    diners: 6,
-    discover: 6,
-    jcb: 6,
-    maestro: 6,
-    aura: 6,
-    unknown: 3,
-}
-const DEFAULT_MONTHLY_INTEREST = 1.99 // em % ao mês
-
 const maskCep = (v: string) => {
     const d = (v ?? '').replace(/\D/g, '').slice(0, 8)
     return d.replace(/(\d{5})(\d)/, '$1-$2')
@@ -76,7 +45,8 @@ interface CheckoutAddress {
     created_at?: string
 }
 
-type AddressLocal = Required<Pick<CheckoutAddress, 'zipCode' | 'street' | 'neighborhood' | 'city' | 'state'>> & Partial<Omit<CheckoutAddress, 'zipCode' | 'street' | 'neighborhood' | 'city' | 'state'>> & { id: string }
+type AddressLocal = Required<Pick<CheckoutAddress, 'zipCode' | 'street' | 'neighborhood' | 'city' | 'state'>> &
+    Partial<Omit<CheckoutAddress, 'zipCode' | 'street' | 'neighborhood' | 'city' | 'state'>> & { id: string }
 
 type ShippingOption = {
     id: string
@@ -100,73 +70,7 @@ type PaymentOption = {
 const currency = (v: number) =>
     v?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) ?? 'R$ 0,00'
 
-/* ------------------ helpers de cartão ------------------ */
-
-function detectCardBrandFromNumber(numRaw: string): string {
-    const n = (numRaw || '').replace(/\D/g, '')
-    if (n.length === 0) return 'unknown'
-
-    const re: Record<string, RegExp> = {
-        visa: /^4/,
-        mastercard: /^(5[1-5]|2(2[2-9]|[3-6]\d|7[01]|720))/,
-        amex: /^3[47]/,
-        diners: /^3(?:0[0-5]|[68])/,
-        discover: /^(6011|65|64[4-9])/,
-        jcb: /^35(?:2[89]|[3-8]\d)/,
-        maestro: /^(5018|5020|5038|6304|6759|676[1-3])/,
-        hipercard: /^(606282|384100|384140|384160)/,
-        elo: /^(4011|4312|438935|451416|457393|457631|504175|5067|5090|627780|636297|636368)/,
-        aura: /^50(42|43)/,
-    }
-
-    for (const k of Object.keys(re)) {
-        const r = re[k]
-        if (r.test(n)) return k
-    }
-    return 'unknown'
-}
-
-function formatCardNumberForDisplay(numRaw: string, brand: string) {
-    const n = (numRaw || '').replace(/\D/g, '')
-    if (brand === 'amex') {
-        return n.replace(/^(.{4})(.{6})(.{0,5}).*$/, (_m, a, b, c) => [a, b, c].filter(Boolean).join(' ')).trim()
-    }
-    return n.replace(/(.{4})/g, '$1 ').trim()
-}
-
-function cvcLengthForBrand(brand: string) {
-    if (brand === 'amex') return 4
-    return 3
-}
-
-function generateInstallmentOptions(total: number, brand: string) {
-    const max = MAX_INSTALLMENTS_BY_BRAND[brand] ?? MAX_INSTALLMENTS_BY_BRAND.unknown
-    const noInterestMax = NO_INTEREST_MAX_BY_BRAND[brand] ?? NO_INTEREST_MAX_BY_BRAND.unknown
-    const out: Array<{ n: number; label: string; perInstallment: number; interestMonthly: number; interestApplied: boolean }> = []
-
-    for (let n = 1; n <= Math.min(max, 21); n++) {
-        let interestApplied = n > noInterestMax
-        let monthlyInterest = interestApplied ? DEFAULT_MONTHLY_INTEREST : 0
-        let per = 0
-        if (monthlyInterest === 0) {
-            per = Number((total / n).toFixed(2))
-        } else {
-            const i = monthlyInterest / 100
-            const factor = Math.pow(1 + i, n)
-            per = Number(((total * (factor * i)) / (factor - 1)).toFixed(2))
-        }
-
-        const label = `${n}x de ${currency(per)}${interestApplied ? ` — juros ${monthlyInterest}% a.m.` : ' — sem juros'}`
-
-        out.push({ n, label, perInstallment: per, interestMonthly: monthlyInterest, interestApplied })
-    }
-
-    return out
-}
-
-/* ------------------ componente ------------------ */
-
-export default function FinishOrderPage() {
+export default function FinishOrderPageCopy() {
 
     const router = useRouter()
     const { colors } = useTheme();
@@ -195,6 +99,9 @@ export default function FinishOrderPage() {
     // confirmation delete modal
     const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
 
+    // guest customer
+    const [guestCustomer, setGuestCustomer] = useState<{ name?: string; email?: string; phone?: string; cpf?: string }>({})
+
     // shipping
     const [shippingOptions, setShippingOptions] = useState<ShippingOption[]>([])
     const [selectedShippingId, setSelectedShippingId] = useState<string | undefined>(undefined)
@@ -204,16 +111,13 @@ export default function FinishOrderPage() {
     const [paymentOptions, setPaymentOptions] = useState<PaymentOption[]>([])
     const [selectedPaymentId, setSelectedPaymentId] = useState<string | undefined>(undefined)
 
-    // card inputs
+    // card inputs (para checkout transparente)
     const [cardNumber, setCardNumber] = useState('')
     const [cardHolder, setCardHolder] = useState('')
     const [cardExpMonth, setCardExpMonth] = useState('')
     const [cardExpYear, setCardExpYear] = useState('')
     const [cardCvv, setCardCvv] = useState('')
     const [cardInstallments, setCardInstallments] = useState<number | null>(1)
-
-    // brand management
-    const [detectedBrand, setDetectedBrand] = useState<string>('unknown')
 
     // coupons/promotions
     const [couponInput, setCouponInput] = useState('')
@@ -247,75 +151,46 @@ export default function FinishOrderPage() {
 
     const shippingDiscount = promotions?.filter((p) => p.type === 'shipping').reduce((s, p) => s + (p.discount ?? 0), 0) ?? 0
     const productDiscount = (discountTotal ?? 0) - shippingDiscount
+    const payableTotal = (itemsTotal ?? 0) - (productDiscount ?? 0) + (currentFrete - (shippingDiscount ?? 0))
 
-    // base payable (sem considerar juros de parcelas)
-    const payableBase = (itemsTotal ?? 0) - (productDiscount ?? 0) + (currentFrete - (shippingDiscount ?? 0))
-
-    // installment options (dependem da bandeira detectada)
-    const currentBrand = detectedBrand ?? 'unknown'
-    const installmentOptions = useMemo(() => generateInstallmentOptions(payableBase, currentBrand), [payableBase, currentBrand])
-
-    // compute displayed total considering selected installment (juros compostos aplicados no perInstallment)
-    const selectedInstallmentObj = installmentOptions.find(i => i.n === (cardInstallments ?? 1))
-    const totalWithInstallments = selectedInstallmentObj ? Number((selectedInstallmentObj.perInstallment * selectedInstallmentObj.n).toFixed(2)) : payableBase
-
-    /* ------------------ effects ------------------ */
-
-    // on mount: load addresses + create/update AbandonedCart
+    // load addresses
     useEffect(() => {
+        if (!isAuthenticated || !user) {
+            setAddresses([])
+            setSelectedAddressId(undefined)
+            return
+        }
         let mounted = true
-
             ; (async () => {
-                if (isAuthenticated && user) {
-                    try {
-                        const apiClient = setupAPIClient()
-                        const resp = await apiClient.get<any>(`/customer/address/list?customer_id=${user.id}`)
-                        if (!mounted) return
-                        const list: any[] = resp.data || []
-                        const norm = list.map((a) => ({
-                            id: a.id,
-                            recipient_name: a.recipient_name ?? a.name ?? '',
-                            customer_id: a.customer_id ?? user.id,
-                            zipCode: a.zipCode ?? a.zip_code ?? '',
-                            street: a.street ?? '',
-                            neighborhood: a.neighborhood ?? '',
-                            city: a.city ?? '',
-                            state: a.state ?? '',
-                            number: a.number ?? '',
-                            complement: a.complement ?? '',
-                            reference: a.reference ?? '',
-                            country: a.country ?? 'Brasil',
-                            created_at: a.created_at,
-                        })) as AddressLocal[]
-                        setAddresses(norm)
-                        if (norm.length && !selectedAddressId) setSelectedAddressId(norm[0].id)
-                    } catch (err) {
-                        console.warn('Erro ao carregar endereços', err)
-                    }
-                }
-
-                // create/update abandoned cart record on backend
                 try {
-                    const payload = {
-                        cart_id: cart?.id ?? null,
-                        customer_id: user?.id ?? null,
-                        items: cart?.items?.map((it: any) => ({ product_id: it.product_id, quantity: it.quantity, price: it.price })) ?? [],
-                        total: cart?.total ?? payableBase,
-                    }
-                    // se não houver cart id ou items, ignora
-                    if (payload.cart_id && payload.items && payload.items.length > 0) {
-                        const apiClient = setupAPIClient()
-                        const res = await apiClient.post(`/cart/abandoned`, payload);
-                        console.log(res.data)
-                    }
+                    const apiClient = setupAPIClient()
+                    const resp = await apiClient.get<any>(`/customer/address/list?customer_id=${user.id}`)
+                    if (!mounted) return
+                    const list: any[] = resp.data || []
+                    const norm = list.map((a) => ({
+                        id: a.id,
+                        recipient_name: a.recipient_name ?? a.name ?? '',
+                        customer_id: a.customer_id ?? user.id,
+                        zipCode: a.zipCode ?? a.zip_code ?? '',
+                        street: a.street ?? '',
+                        neighborhood: a.neighborhood ?? '',
+                        city: a.city ?? '',
+                        state: a.state ?? '',
+                        number: a.number ?? '',
+                        complement: a.complement ?? '',
+                        reference: a.reference ?? '',
+                        country: a.country ?? 'Brasil',
+                        created_at: a.created_at,
+                    })) as AddressLocal[]
+                    setAddresses(norm)
+                    if (norm.length && !selectedAddressId) setSelectedAddressId(norm[0].id)
                 } catch (err) {
-                    console.warn('Não foi possível criar/atualizar AbandonedCart', err)
+                    console.warn('Erro ao carregar endereços', err)
                 }
             })()
-
         return () => { mounted = false }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isAuthenticated, user, cart?.id])
+    }, [isAuthenticated, user])
 
     // load payments
     useEffect(() => {
@@ -335,8 +210,6 @@ export default function FinishOrderPage() {
             }
         })()
     }, [])
-
-    /* ------------------ handlers ------------------ */
 
     function openCreateAddress() {
         setEditingId(null)
@@ -372,248 +245,25 @@ export default function FinishOrderPage() {
         setAddressModalOpen(true)
     }
 
-    async function fetchShippingOptions(addressId?: string | undefined) {
-        if (!cart?.items || cart.items.length === 0) {
-            toast.error('Erro no carrinho de compras.')
-            return
-        }
-
-        let cepToUse: string | undefined = undefined
-        if (addressId && addressId.startsWith('guest-')) {
-            const local = addresses.find((a) => a.id === addressId)
-            cepToUse = local?.zipCode?.replace(/\D/g, '') ?? undefined
-        } else if (addressId) {
-            const backendAddr = addresses.find((a) => a.id === addressId)
-            cepToUse = backendAddr?.zipCode?.replace(/\D/g, '') ?? undefined
-        } else {
-            cepToUse = selectedAddress?.zipCode?.replace(/\D/g, '') ?? undefined
-        }
-
-        if (!cepToUse) {
-            toast.error('Informe um CEP válido no endereço selecionado para calcular o frete.')
-            return
-        }
-
-        setShippingLoading(true)
+    const handleCepBlur = async () => {
+        const raw = (addressForm.zipCode ?? '').replace(/\D/g, '')
+        if (raw.length !== 8) return
         try {
-            const res = await fetch(`${API_URL}/shipment/calculate`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    cepDestino: cepToUse,
-                    items: (cart.items || []).map((i) => ({
-                        quantity: i.quantity,
-                        weight: i.weight,
-                        length: i.length,
-                        height: i.height,
-                        width: i.width,
-                    })),
-                }),
-            })
-            const data = await res.json()
-            if (!res.ok) {
-                toast.error('Não foi possível calcular o frete.')
-                setShippingOptions([])
-                return
+            const resp = await fetch(`https://viacep.com.br/ws/${raw}/json/`)
+            const json = await resp.json()
+            if (!json.erro) {
+                setAddressForm((f) => ({
+                    ...f,
+                    street: json.logradouro || f.street || '',
+                    neighborhood: json.bairro || f.neighborhood || '',
+                    city: json.localidade || f.city || '',
+                    state: json.uf || f.state || '',
+                }))
             }
-
-            const opts: ShippingOption[] = (data.options || []).map((o: any) => (({
-                id: o.id ?? `${o.carrier ?? o.provider}-${o.service ?? o.name}`,
-                name: o.name ?? (o.service ? `${o.carrier ?? o.provider} — ${o.service}` : undefined),
-                provider: o.carrier ?? o.provider,
-                service: o.service ?? o.name,
-                price: Number(o.price ?? o.total ?? o.valor ?? 0),
-                deliveryTime: o.deliveryTime ?? o.deadline ?? o.estimated_delivery_time ?? undefined,
-                estimated_days: o.deadline ?? o.estimated_delivery_time ?? null,
-                raw: o,
-            } as ShippingOption)))
-
-            setShippingOptions(opts)
-            if (opts.length) setSelectedShippingId(opts[0].id)
-        } catch (err) {
-            console.error('Erro ao calcular frete', err)
-            toast.error('Erro de rede ao calcular frete.')
-            setShippingOptions([])
-        } finally {
-            setShippingLoading(false)
+        } catch {
+            // ignore
         }
     }
-
-    // Card input changes: format + detect brand
-    function onCardNumberChange(raw: string) {
-        const only = raw.replace(/\D/g, '')
-        const brand = detectCardBrandFromNumber(only)
-        setDetectedBrand(brand)
-        // format visually
-        const display = formatCardNumberForDisplay(only, brand)
-        setCardNumber(display)
-    }
-
-    function onCardHolderChange(v: string) {
-        setCardHolder(v)
-    }
-
-    function onExpMonthChange(v: string) {
-        setCardExpMonth(v.replace(/[^\d]/g, '').slice(0, 2))
-    }
-
-    function onExpYearChange(v: string) {
-        setCardExpYear(v.replace(/[^\d]/g, '').slice(0, 4))
-    }
-
-    function onCvvChange(v: string) {
-        const max = cvcLengthForBrand(currentBrand)
-        setCardCvv(v.replace(/\D/g, '').slice(0, max))
-    }
-
-    // place order (mantive sua lógica com validações extras)
-    async function handlePlaceOrder() {
-        if (!cart?.items || cart.items.length === 0) {
-            toast.error('Carrinho vazio.')
-            return
-        }
-        if (!selectedShippingId) {
-            toast.error('Escolha uma opção de envio.')
-            return
-        }
-        if (!selectedPaymentId) {
-            toast.error('Escolha uma forma de pagamento.')
-            return
-        }
-
-        const isCard = String(selectedPaymentId).toLowerCase().includes('card')
-        if (isCard) {
-            // validations
-            const plainNumber = cardNumber.replace(/\s+/g, '')
-            if (!plainNumber || !cardHolder || !cardExpMonth || !cardExpYear || !cardCvv) {
-                toast.error('Preencha todos os dados do cartão para prosseguir.')
-                return
-            }
-            if (!/^\d{13,19}$/.test(plainNumber)) {
-                toast.error('Número de cartão inválido.')
-                return
-            }
-            if (!/^\d{2}$/.test(String(cardExpMonth)) || !/^\d{4}$/.test(String(cardExpYear))) {
-                toast.error('Validade do cartão inválida (MM / YYYY).')
-                return
-            }
-            const cvcLen = cvcLengthForBrand(currentBrand)
-            if (!new RegExp(`^\\d{${cvcLen}}$`).test(cardCvv)) {
-                toast.error(`CVV inválido para a bandeira detectada (deve ter ${cvcLen} dígitos).`)
-                return
-            }
-        }
-
-        setPlacingOrder(true)
-        try {
-            const itemsForApi = (cart.items || []).map((it: CartItemType) => ({
-                product_id: it.product_id,
-                price: it.price,
-                quantity: it.quantity,
-                weight: it.weight ?? 0.1,
-                length: it.length ?? 10,
-                height: it.height ?? 2,
-                width: it.width ?? 10,
-                variant_id: it.variant_id ?? undefined,
-            }))
-
-            const selectedShipping = shippingOptions.find(s => s.id === selectedShippingId)
-            const shippingLabel = selectedShipping?.name ?? (selectedShipping ? `${selectedShipping.provider ?? ''} — ${selectedShipping.service ?? ''}` : undefined)
-
-            let payload: any = {
-                // include cartId to allow backend auto-remove abandoned cart
-                cartId: cart?.id ?? null,
-                shippingId: selectedShippingId,
-                shippingLabel: shippingLabel, // importante: enviar label também
-                paymentId: selectedPaymentId,
-                items: itemsForApi,
-                customerNote: '',
-                couponCode: appliedCoupon ?? undefined,
-                shippingCost: currentFrete,
-                shippingRaw: selectedShipping?.raw ?? selectedShipping ?? null,
-            }
-
-            if (isAuthenticated) {
-                payload.addressId = selectedAddressId
-            } else {
-                if (selectedAddressId?.startsWith('guest-')) {
-                    const localAddress = addresses.find((a) => a.id === selectedAddressId)
-                    if (!localAddress) throw new Error('Endereço inválido')
-                    payload.address = {
-                        street: localAddress.street,
-                        number: localAddress.number,
-                        neighborhood: localAddress.neighborhood,
-                        city: localAddress.city,
-                        state: localAddress.state,
-                        zipCode: localAddress.zipCode?.replace(/\D/g, ''),
-                        country: localAddress.country,
-                        complement: localAddress.complement,
-                        reference: localAddress.reference,
-                    }
-                } else {
-                    if (selectedAddressId) payload.addressId = selectedAddressId
-                }
-            }
-
-            if (isCard) {
-                // ensure month is zero-padded and year is 4-digit
-                const expMonth = String(cardExpMonth).padStart(2, '0')
-                const expYear = String(cardExpYear).length === 2 ? `20${cardExpYear}` : String(cardExpYear)
-
-                payload.card = {
-                    number: cardNumber.replace(/\s+/g, ''),
-                    holderName: cardHolder.trim(),
-                    expirationMonth: expMonth,
-                    expirationYear: expYear,
-                    cvv: cardCvv,
-                    installments: cardInstallments ?? 1,
-                    brand: currentBrand,
-                }
-
-                if (selectedInstallmentObj && selectedInstallmentObj.interestApplied) {
-                    payload.orderTotalOverride = totalWithInstallments
-                }
-            }
-
-            const resp = await api.post('/checkout/order', payload)
-            const data = resp.data ?? {}
-
-            try {
-                // salve label e raw para a página de sucesso usar (evita mostrar id numérico)
-                const lastOrderObj = {
-                    orderId: data.orderId ?? null,
-                    orderTotal: data.orderTotal ?? totalWithInstallments,
-                    shippingCost: currentFrete,
-                    shippingAddress: selectedAddress ?? null,
-                    paymentData: data.paymentData ?? null,
-                    paymentMethod: selectedPaymentId ?? null,
-                    shippingLabel: shippingLabel ?? null,
-                    shippingRaw: selectedShipping?.raw ?? selectedShipping ?? null,
-                    createdAt: new Date().toISOString(),
-                }
-                sessionStorage.setItem(`lastOrder:${String(data.orderId ?? '')}`, JSON.stringify(lastOrderObj))
-            } catch (e) {
-                console.warn('Não foi possível salvar lastOrder no sessionStorage', e)
-            }
-
-            // limpar carrinho
-            clearCart()
-
-            // redirecionar
-            router.push(`/order/success/${data.orderId}`)
-        } catch (err: any) {
-            console.error('Erro ao finalizar pedido', err)
-            toast.error(err?.response?.data?.message ?? err?.message ?? 'Não foi possível finalizar o pedido.')
-        } finally {
-            setPlacingOrder(false)
-        }
-    }
-
-    function brandImageSrc(brand: string) {
-        return `/card-brands/${brand}.png`
-    }
-
-    /* ------------------ modal / address helpers (mantive) ------------------ */
 
     async function submitAddress() {
         try {
@@ -743,6 +393,75 @@ export default function FinishOrderPage() {
         setDeleteTarget(null)
     }
 
+    // shipping calculation
+    async function fetchShippingOptions(addressId?: string | undefined) {
+        if (!cart?.items || cart.items.length === 0) {
+            toast.error('Erro no carrinho de compras.')
+            return
+        }
+
+        let cepToUse: string | undefined = undefined
+        if (addressId && addressId.startsWith('guest-')) {
+            const local = addresses.find((a) => a.id === addressId)
+            cepToUse = local?.zipCode?.replace(/\D/g, '') ?? undefined
+        } else if (addressId) {
+            const backendAddr = addresses.find((a) => a.id === addressId)
+            cepToUse = backendAddr?.zipCode?.replace(/\D/g, '') ?? undefined
+        } else {
+            cepToUse = selectedAddress?.zipCode?.replace(/\D/g, '') ?? undefined
+        }
+
+        if (!cepToUse) {
+            toast.error('Informe um CEP válido no endereço selecionado para calcular o frete.')
+            return
+        }
+
+        setShippingLoading(true)
+        try {
+            const res = await fetch(`${API_URL}/shipment/calculate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    cepDestino: cepToUse,
+                    items: (cart.items || []).map((i) => ({
+                        quantity: i.quantity,
+                        weight: i.weight,
+                        length: i.length,
+                        height: i.height,
+                        width: i.width,
+                    })),
+                }),
+            })
+            const data = await res.json()
+            if (!res.ok) {
+                toast.error('Não foi possível calcular o frete.')
+                setShippingOptions([])
+                return
+            }
+
+            const opts: ShippingOption[] = (data.options || []).map((o: any) => ({
+                id: o.id ?? `${o.carrier ?? o.provider}-${o.service ?? o.name}`,
+                name: o.name ?? (o.service ? `${o.carrier ?? o.provider} — ${o.service}` : undefined),
+                provider: o.carrier ?? o.provider,
+                service: o.service ?? o.name,
+                price: Number(o.price ?? o.total ?? o.valor ?? 0),
+                deliveryTime: o.deliveryTime ?? o.deadline ?? o.estimated_delivery_time ?? undefined,
+                estimated_days: o.deadline ?? o.estimated_delivery_time ?? null,
+                raw: o,
+            }))
+
+            setShippingOptions(opts)
+            if (opts.length) setSelectedShippingId(opts[0].id)
+        } catch (err) {
+            console.error('Erro ao calcular frete', err)
+            toast.error('Erro de rede ao calcular frete.')
+            setShippingOptions([])
+        } finally {
+            setShippingLoading(false)
+        }
+    }
+
+    // coupon logic
     async function applyCoupon() {
         const code = couponInput.trim()
         if (!code) return
@@ -781,12 +500,168 @@ export default function FinishOrderPage() {
         toast.info('Cupom removido')
     }
 
-    /* ------------------ render ------------------ */
+    // place order
+    async function handlePlaceOrder() {
+        if (!cart?.items || cart.items.length === 0) {
+            toast.error('Carrinho vazio.')
+            return
+        }
+        if (!selectedShippingId) {
+            toast.error('Escolha uma opção de envio.')
+            return
+        }
+        if (!selectedPaymentId) {
+            toast.error('Escolha uma forma de pagamento.')
+            return
+        }
+
+        if (!isAuthenticated) {
+            if (!guestCustomer.name || !guestCustomer.email || !guestCustomer.phone) {
+                toast.error('Preencha nome, e-mail e telefone para prosseguir como visitante.')
+                return
+            }
+            if (!selectedAddressId) {
+                toast.error('Escolha ou adicione um endereço de entrega.')
+                return
+            }
+        } else {
+            if (!selectedAddressId) {
+                toast.error('Escolha um endereço de entrega.')
+                return
+            }
+        }
+
+        // Se pagamento por cartão: validações simples do frontend
+        const isCard = String(selectedPaymentId).toLowerCase().includes('card')
+        if (isCard) {
+            if (!cardNumber || !cardHolder || !cardExpMonth || !cardExpYear || !cardCvv) {
+                toast.error('Preencha todos os dados do cartão para prosseguir.')
+                return
+            }
+            // validações básicas
+            if (!/^\d{13,19}$/.test(cardNumber.replace(/\s+/g, ''))) {
+                toast.error('Número de cartão inválido.')
+                return
+            }
+            if (!/^\d{2}$/.test(String(cardExpMonth)) || !/^\d{4}$/.test(String(cardExpYear))) {
+                toast.error('Validade do cartão inválida (MM / YYYY).')
+                return
+            }
+            if (!/^\d{3,4}$/.test(cardCvv)) {
+                toast.error('CVV inválido.')
+                return
+            }
+        }
+
+        setPlacingOrder(true)
+        try {
+            const itemsForApi = (cart.items || []).map((it: CartItemType) => ({
+                product_id: it.product_id,
+                price: it.price,
+                quantity: it.quantity,
+                weight: it.weight ?? 0.1,
+                length: it.length ?? 10,
+                height: it.height ?? 2,
+                width: it.width ?? 10,
+                variant_id: it.variant_id ?? undefined,
+            }))
+
+            // Recupera o objeto de shipping selecionado (raw) para enviar ao backend
+            const selectedShipping = shippingOptions.find(s => s.id === selectedShippingId)
+
+            let payload: any = {
+                shippingId: selectedShippingId,
+                paymentId: selectedPaymentId,
+                items: itemsForApi,
+                customerNote: '',
+                couponCode: appliedCoupon ?? undefined,
+                shippingCost: currentFrete, // numero
+                shippingRaw: selectedShipping?.raw ?? selectedShipping ?? null,
+            }
+
+            if (isAuthenticated) {
+                payload.addressId = selectedAddressId
+            } else {
+                if (selectedAddressId?.startsWith('guest-')) {
+                    const localAddress = addresses.find((a) => a.id === selectedAddressId)
+                    if (!localAddress) throw new Error('Endereço inválido')
+                    payload.address = {
+                        street: localAddress.street,
+                        number: localAddress.number,
+                        neighborhood: localAddress.neighborhood,
+                        city: localAddress.city,
+                        state: localAddress.state,
+                        zipCode: localAddress.zipCode?.replace(/\D/g, ''),
+                        country: localAddress.country,
+                        complement: localAddress.complement,
+                        reference: localAddress.reference,
+                    }
+                } else {
+                    if (selectedAddressId) payload.addressId = selectedAddressId
+                }
+                payload.guestCustomer = guestCustomer
+            }
+
+            // Se cartão, adiciona objeto card ao payload (será tokenizado no servidor)
+            if (isCard) {
+                payload.card = {
+                    number: cardNumber.replace(/\s+/g, ''),
+                    holderName: cardHolder,
+                    expirationMonth: cardExpMonth,
+                    expirationYear: cardExpYear,
+                    cvv: cardCvv,
+                    installments: cardInstallments ?? 1,
+                }
+            }
+
+            console.log(payload)
+
+            const resp = await api.post('/checkout/order', payload)
+            const data = resp.data ?? {}
+
+            try {
+                sessionStorage.setItem(
+                    `lastOrder:${String(data.orderId ?? '')}`,
+                    JSON.stringify({
+                        orderId: data.orderId ?? null,
+                        orderTotal: data.orderTotal ?? payableTotal,
+                        shippingCost: currentFrete,
+                        shippingAddress: selectedAddress ?? null,
+                        paymentData: data.paymentData ?? null,
+                        paymentMethod: selectedPaymentId ?? null,
+                        createdAt: new Date().toISOString(),
+                    })
+                );
+            } catch (e) {
+                console.warn('Não foi possível salvar lastOrder no sessionStorage', e);
+            }
+
+            clearCart()
+
+            // Redireciona para página de sucesso padrão -> OrderSuccessPage (rota: /order/success/:id)
+            router.push(`/order/success/${data.orderId}`)
+        } catch (err: any) {
+            console.error('Erro ao finalizar pedido', err)
+            toast.error(err?.response?.data?.message ?? 'Não foi possível finalizar o pedido.')
+        } finally {
+            setPlacingOrder(false)
+        }
+    }
+
+    const resolveImageSrc = (src?: string | string[]) => {
+        if (!src) return ''
+        if (Array.isArray(src)) return src[0] ? (src[0].startsWith('http') ? src[0] : `${API_URL}/files/${src[0]}`) : ''
+        if (typeof src === 'string') return src.startsWith('http') ? src : `${API_URL}/files/${src}`
+        return ''
+    }
 
     return (
         <>
             <NavbarCheckout />
-            <main className="flex-1 flex px-4 py-8 text-black" style={{ background: colors?.segundo_fundo_layout_site || '#e1e4e9' }}>
+            <main
+                className="flex-1 flex px-4 py-8 text-black"
+                style={{ background: colors?.segundo_fundo_layout_site || '#e1e4e9' }}
+            >
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div className="lg:col-span-2 space-y-6">
                         <section className="bg-white rounded-2xl shadow p-6">
@@ -824,22 +699,18 @@ export default function FinishOrderPage() {
                             {!shippingLoading && shippingOptions.length === 0 && <div className="mt-4 text-sm text-gray-600">Nenhuma opção encontrada. Calcule o frete.</div>}
 
                             <div className="mt-4 space-y-3">
-                                {shippingOptions.map((s) => {
-                                    const prazo = s.deliveryTime ?? (s.estimated_days ? `${s.estimated_days} dias` : '—')
-                                    const label = s.name ?? `${s.provider ?? ''} — ${s.service ?? ''}`
-                                    return (
-                                        <label key={s.id} className={`flex items-center justify-between gap-3 p-3 rounded border ${selectedShippingId === s.id ? 'border-orange-500 bg-orange-50' : 'border-gray-200'}`}>
-                                            <div>
-                                                <div className="font-medium">{label}</div>
-                                                <div className="text-sm text-gray-600">Prazo estimado: {prazo}</div>
-                                            </div>
-                                            <div className="flex items-center gap-3">
-                                                <div className="font-medium">{currency(s.price)}</div>
-                                                <input name="shipping" type="radio" checked={selectedShippingId === s.id} onChange={() => setSelectedShippingId(s.id)} />
-                                            </div>
-                                        </label>
-                                    )
-                                })}
+                                {shippingOptions.map((s) => (
+                                    <label key={s.id} className={`flex items-center justify-between gap-3 p-3 rounded border ${selectedShippingId === s.id ? 'border-orange-500 bg-orange-50' : 'border-gray-200'}`}>
+                                        <div>
+                                            <div className="font-medium">{s.name ?? `${s.provider ?? ''} — ${s.service ?? ''}`}</div>
+                                            <div className="text-sm text-gray-600">Prazo estimado: {s.deliveryTime ?? s.estimated_days ? `${s.deliveryTime ?? s.estimated_days} dias` : '—'}</div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <div className="font-medium">{currency(s.price)}</div>
+                                            <input name="shipping" type="radio" checked={selectedShippingId === s.id} onChange={() => setSelectedShippingId(s.id)} />
+                                        </div>
+                                    </label>
+                                ))}
                             </div>
                         </section>
 
@@ -858,52 +729,26 @@ export default function FinishOrderPage() {
                                             </div>
                                         </label>
 
-                                        {/* Formulário do cartão */}
+                                        {/* Se cartão selecionado, mostrar formulário inline */}
                                         {selectedPaymentId === p.id && String(p.method).toLowerCase().includes('card') && (
                                             <div className="p-3 border rounded bg-gray-50 mt-2">
-                                                <div className="grid grid-cols-1 gap-3">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="flex-1 relative">
-                                                            <label className="text-sm text-gray-700">Número do cartão</label>
-                                                            <input placeholder="0000 0000 0000 0000" value={cardNumber} onChange={(e) => onCardNumberChange(e.target.value)} className="w-full p-3 border rounded mt-1" />
-                                                            <div className="absolute right-3 top-8">
-                                                                <img src={brandImageSrc(detectedBrand)} alt={detectedBrand} onError={(e) => { (e.target as HTMLImageElement).src = '/card-brands/unknown.png' }} className="w-10 h-8 object-contain" />
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div>
-                                                        <label className="text-sm text-gray-700">Nome do titular</label>
-                                                        <input placeholder="Nome como no cartão" value={cardHolder} onChange={(e) => onCardHolderChange(e.target.value)} className="w-full p-2 border rounded mt-1" />
-                                                    </div>
-
+                                                <div className="grid grid-cols-1 gap-2">
+                                                    <input placeholder="Número do cartão (somente números)" value={cardNumber} onChange={(e) => setCardNumber(e.target.value.replace(/[^\d\s]/g, ''))} className="p-2 border rounded" />
+                                                    <input placeholder="Nome do titular" value={cardHolder} onChange={(e) => setCardHolder(e.target.value)} className="p-2 border rounded" />
                                                     <div className="grid grid-cols-3 gap-2">
-                                                        <div>
-                                                            <label className="text-sm text-gray-700">Validade (MM)</label>
-                                                            <input value={cardExpMonth} onChange={(e) => onExpMonthChange(e.target.value)} className="p-2 border rounded mt-1" placeholder="MM" />
-                                                        </div>
-                                                        <div>
-                                                            <label className="text-sm text-gray-700">Validade (YYYY)</label>
-                                                            <input value={cardExpYear} onChange={(e) => onExpYearChange(e.target.value)} className="p-2 border rounded mt-1" placeholder="YYYY" />
-                                                        </div>
-                                                        <div>
-                                                            <label className="text-sm text-gray-700">CVV</label>
-                                                            <input value={cardCvv} onChange={(e) => onCvvChange(e.target.value)} className="p-2 border rounded mt-1" placeholder={String(cvcLengthForBrand(currentBrand))} />
-                                                        </div>
+                                                        <input placeholder="MM" value={cardExpMonth} onChange={(e) => setCardExpMonth(e.target.value.replace(/[^\d]/g, '').slice(0, 2))} className="p-2 border rounded" />
+                                                        <input placeholder="YYYY" value={cardExpYear} onChange={(e) => setCardExpYear(e.target.value.replace(/[^\d]/g, '').slice(0, 4))} className="p-2 border rounded" />
+                                                        <input placeholder="CVV" value={cardCvv} onChange={(e) => setCardCvv(e.target.value.replace(/[^\d]/g, '').slice(0, 4))} className="p-2 border rounded" />
                                                     </div>
 
                                                     <div className="flex items-center gap-2">
                                                         <label className="text-sm">Parcelas</label>
                                                         <select value={String(cardInstallments ?? 1)} onChange={(e) => setCardInstallments(Number(e.target.value))} className="p-2 border rounded">
-                                                            {installmentOptions.map(opt => (
-                                                                <option key={opt.n} value={opt.n}>{opt.label}</option>
-                                                            ))}
+                                                            {Array.from({ length: 12 }).map((_, i) => <option key={i + 1} value={i + 1}>{i + 1}x</option>)}
                                                         </select>
                                                     </div>
 
-                                                    <div className="text-xs text-gray-500">
-                                                        Observação: As bandeiras de cartão de crédito aceitas são: visa, mastercard, amex, elo, hipercard, diners, discover, jcb, maestro, aura.
-                                                    </div>
+                                                    <div className="text-xs text-gray-500">Observação: este fluxo envia os dados do cartão ao seu servidor para tokenização com o gateway (sandbox). Em produção, verifique conformidade PCI e prefira tokenização no cliente (SDK) quando possível.</div>
                                                 </div>
                                             </div>
                                         )}
@@ -920,8 +765,8 @@ export default function FinishOrderPage() {
                             {cart?.items?.map((it) => (
                                 <div key={it.id} className="flex items-center gap-3">
                                     <div className="w-16 h-16 relative">
-                                        {(it.images && ((Array.isArray(it.images) && it.images[0]) || (!Array.isArray(it.images) && it.images))) ? (
-                                            <Image src={(Array.isArray(it.images) ? (it.images[0].startsWith('http') ? it.images[0] : `${API_URL}/files/${it.images[0]}`) : (it.images as string).startsWith('http') ? it.images as string : `${API_URL}/files/${it.images as string}`)} alt={it.name} width={64} height={64} className="object-cover rounded" />
+                                        {resolveImageSrc(it.images) ? (
+                                            <Image src={resolveImageSrc(it.images)} alt={it.name} width={64} height={64} className="object-cover rounded" />
                                         ) : (
                                             <div className="w-16 h-16 bg-gray-100 rounded flex items-center justify-center text-gray-400">sem imagem</div>
                                         )}
@@ -976,10 +821,10 @@ export default function FinishOrderPage() {
 
                             <div className="border-t pt-2 flex justify-between font-bold">
                                 <span className="text-gray-700">Total a pagar</span>
-                                <span className="text-red-500">{currency(totalWithInstallments)}</span>
+                                <span className="text-red-500">{currency(payableTotal)}</span>
                             </div>
 
-                            <p className="text-xs text-gray-500">Exemplo de parcela selecionada: {cardInstallments}x — {installmentOptions.find(i => i.n === (cardInstallments ?? 1))?.label}</p>
+                            <p className="text-xs text-gray-500">12x de {currency(payableTotal / 12)} sem juros</p>
                         </div>
 
                         <button disabled={placingOrder} onClick={handlePlaceOrder} className="mt-4 w-full bg-green-600 text-white py-3 rounded disabled:opacity-60">
@@ -988,7 +833,7 @@ export default function FinishOrderPage() {
                     </aside>
                 </div>
 
-                {/* Address Modal (mantive seu modal sem mudanças significativas) */}
+                {/* Address Modal */}
                 <Dialog open={addressModalOpen} onClose={() => setAddressModalOpen(false)} className="relative z-50 text-black">
                     <div className="fixed inset-0 bg-black/30" aria-hidden />
                     <div className="fixed inset-0 flex items-center justify-center p-4">
@@ -997,23 +842,7 @@ export default function FinishOrderPage() {
 
                             <div className="mt-4 grid grid-cols-1 gap-3">
                                 <input placeholder="Nome do destinatário" value={addressForm.recipient_name ?? ''} onChange={(e) => setAddressForm((s) => ({ ...s, recipient_name: e.target.value }))} className="p-2 border rounded" />
-                                <input placeholder="CEP" value={addressForm.zipCode ?? ''} onChange={(e) => setAddressForm((s) => ({ ...s, zipCode: maskCep(e.target.value) }))} onBlur={async () => {
-                                    const raw = (addressForm.zipCode ?? '').replace(/\D/g, '')
-                                    if (raw.length !== 8) return
-                                    try {
-                                        const resp = await fetch(`https://viacep.com.br/ws/${raw}/json/`)
-                                        const json = await resp.json()
-                                        if (!json.erro) {
-                                            setAddressForm((f) => ({
-                                                ...f,
-                                                street: json.logradouro || f.street || '',
-                                                neighborhood: json.bairro || f.neighborhood || '',
-                                                city: json.localidade || f.city || '',
-                                                state: json.uf || f.state || '',
-                                            }))
-                                        }
-                                    } catch { /* ignore */ }
-                                }} className="p-2 border rounded" />
+                                <input placeholder="CEP" value={addressForm.zipCode ?? ''} onChange={(e) => setAddressForm((s) => ({ ...s, zipCode: maskCep(e.target.value) }))} onBlur={handleCepBlur} className="p-2 border rounded" />
                                 <input placeholder="Rua" value={addressForm.street ?? ''} onChange={(e) => setAddressForm((s) => ({ ...s, street: e.target.value }))} className="p-2 border rounded" />
                                 <div className="grid grid-cols-2 gap-2">
                                     <input placeholder="Número" value={addressForm.number ?? ''} onChange={(e) => setAddressForm((s) => ({ ...s, number: e.target.value }))} className="p-2 border rounded" />
