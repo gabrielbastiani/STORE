@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Image from 'next/image'
 import { toast } from 'react-toastify'
 import { useTheme } from '@/app/contexts/ThemeContext'
 import { NavbarCheckout } from '@/app/components/navbar/navbarCheckout'
@@ -55,22 +54,63 @@ interface OrderData {
 const currency = (v: number) =>
     v?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) ?? 'R$ 0,00'
 
-// Aceita Date | string | null para evitar erro de tipagem
-const formatDateTime = (dateInput?: string | Date | null) => {
-    if (!dateInput) return ''
-    try {
-        const date = dateInput instanceof Date ? dateInput : new Date(String(dateInput))
-        if (isNaN(date.getTime())) return String(dateInput)
-        return date.toLocaleString('pt-BR', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        })
-    } catch {
-        return String(dateInput)
+function parseDatePreserveLocal(input?: string | Date | null): Date | null {
+    if (input === null || input === undefined) return null
+    if (input instanceof Date) return input
+    const s = String(input).trim()
+    if (!s) return null
+
+    const midnightZ = s.match(/^(\d{4})-(\d{2})-(\d{2})T00:00:00(?:\.\d+)?Z$/)
+    if (midnightZ) {
+        const year = Number(midnightZ[1])
+        const month = Number(midnightZ[2]) - 1
+        const day = Number(midnightZ[3])
+        return new Date(year, month, day)
     }
+
+    if (/[zZ]$|[+\-]\d{2}:\d{2}$/.test(s)) {
+        const d = new Date(s)
+        return isNaN(d.getTime()) ? null : d
+    }
+
+    // data apenas YYYY-MM-DD
+    const dateOnly = s.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+    if (dateOnly) {
+        const year = Number(dateOnly[1])
+        const month = Number(dateOnly[2]) - 1
+        const day = Number(dateOnly[3])
+        return new Date(year, month, day)
+    }
+
+    // data-hora sem timezone: YYYY-MM-DDTHH:MM(:ss(.ms)?)?
+    const dt = s.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?$/)
+    if (dt) {
+        const year = Number(dt[1])
+        const month = Number(dt[2]) - 1
+        const day = Number(dt[3])
+        const hour = Number(dt[4]) || 0
+        const minute = Number(dt[5]) || 0
+        const second = Number(dt[6]) || 0
+        const ms = dt[7] ? Number((dt[7] + '000').slice(0, 3)) : 0
+        return new Date(year, month, day, hour, minute, second, ms)
+    }
+
+    // fallback: tentar new Date()
+    const fallback = new Date(s)
+    if (!isNaN(fallback.getTime())) return fallback
+    return null
+}
+
+const formatDateTime = (dateInput?: string | Date | null) => {
+    const d = parseDatePreserveLocal(dateInput)
+    if (!d) return ''
+    return d.toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    })
 }
 
 // Gerador de QR público (usado apenas se não houver base64 vindo do gateway)
@@ -80,7 +120,6 @@ const generateQRCodeUrl = (text: string) => {
 
 /* ---------- função que localiza a string de deliveryTime sem transformar nada ---------- */
 const findDeliveryTimeString = (od: OrderData): string | null => {
-    // 1) tenta sessionStorage: lastOrder:<id>
     try {
         const sessionKey = `lastOrder:${od.id}`
         const raw = sessionStorage.getItem(sessionKey)
@@ -89,7 +128,6 @@ const findDeliveryTimeString = (od: OrderData): string | null => {
                 const parsed = JSON.parse(raw)
                 const sp = parsed.orderData ?? parsed
                 if (sp) {
-                    // pode vir em shippingRaw.deliveryTime, shippingRaw.delivery_time, shippingRaw.deliveryTime
                     const cand =
                         sp.shippingRaw?.deliveryTime ??
                         sp.shippingRaw?.delivery_time ??
@@ -104,10 +142,9 @@ const findDeliveryTimeString = (od: OrderData): string | null => {
         }
     } catch { /* ignore sessionStorage errors */ }
 
-    // 2) check orderData.raw top-level fields
     const r = (od as any).raw ?? {}
     const directCandidates = [
-        od.shippingMethod as any, // note: shippingMethod often is id or label
+        od.shippingMethod as any,
         r.deliveryTime,
         r.delivery_time,
         r.shipping?.deliveryTime,
@@ -122,11 +159,9 @@ const findDeliveryTimeString = (od: OrderData): string | null => {
         if (typeof c === 'string' && c.trim() !== '') return c.trim()
     }
 
-    // 3) procurar em arrays de opções: r.options, r.shippingOptions, r.quotes, r.options[]
     const arrays = [r.options, r.shippingOptions, r.quotes, r.shipping?.options, r.optionsArray].filter(Boolean)
     for (const arr of arrays) {
         if (!Array.isArray(arr)) continue
-        // se orderData.shippingMethod é um id, tenta achar a opção correspondente
         const idStr = od.shippingMethod != null ? String(od.shippingMethod) : null
         if (idStr) {
             const found = arr.find((o: any) => String(o.id) === idStr || String(o.shippingId) === idStr || String(o.optionId) === idStr)
@@ -135,7 +170,6 @@ const findDeliveryTimeString = (od: OrderData): string | null => {
                 if (typeof cand === 'string' && cand.trim() !== '') return cand.trim()
             }
         }
-        // fallback: se não encontrou por id, retorna o deliveryTime da primeira opção (ex.: no seu exemplo as opções já contêm deliveryTime)
         const first = arr[0]
         if (first) {
             const cand = first.deliveryTime ?? first.delivery_time ?? first.delivery ?? null
@@ -143,7 +177,6 @@ const findDeliveryTimeString = (od: OrderData): string | null => {
         }
     }
 
-    // 4) procura em raw.shippingRaw ou raw.shipping
     const fallbackCandidates = [r.shippingRaw, r.shipping, r.freight, r.shipment, r]
     for (const candObj of fallbackCandidates) {
         if (!candObj) continue
@@ -164,7 +197,6 @@ export default function OrderSuccessPage({ params }: { params: any }) {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
-    // Função para copiar texto
     const copyToClipboard = async (text: string, label: string) => {
         try {
             if (!text) throw new Error('vazio')
@@ -182,7 +214,7 @@ export default function OrderSuccessPage({ params }: { params: any }) {
             setLoading(true)
             setError(null)
 
-            // Resolve id por compatibilidade: params pode ser um objeto ou uma Promise (app-router)
+            // resolve id (params pode ser promise no App Router)
             let id: string | null = null
             try {
                 if (params && typeof params.then === 'function') {
@@ -204,7 +236,6 @@ export default function OrderSuccessPage({ params }: { params: any }) {
             }
 
             try {
-                // 1) load sessionStorage partial if exists (we'll still request API for full data)
                 const sessionKey = `lastOrder:${id}`
                 const sessionData = sessionStorage.getItem(sessionKey)
                 let sessionParsed: any = null
@@ -216,7 +247,6 @@ export default function OrderSuccessPage({ params }: { params: any }) {
                     }
                 }
 
-                // 2) fetch api
                 const response = await api.get(`/order/${id}`)
                 const data = response.data
 
@@ -224,7 +254,6 @@ export default function OrderSuccessPage({ params }: { params: any }) {
                     throw new Error('Dados do pedido não foram retornados pela API')
                 }
 
-                // Normaliza retorno da API para a interface OrderData
                 const normalizedFromApi: OrderData = {
                     id: data.id ?? id,
                     total: data.total ?? data.amount ?? undefined,
@@ -239,7 +268,6 @@ export default function OrderSuccessPage({ params }: { params: any }) {
                     raw: data,
                 }
 
-                // 3) mescla sessionParsed para priorizar label se existir
                 if (sessionParsed) {
                     const sp = sessionParsed.orderData ?? sessionParsed
                     if (sp) {
@@ -307,12 +335,11 @@ export default function OrderSuccessPage({ params }: { params: any }) {
         )
     }
 
-    const payment = orderData.payments?.[0] // Pega o primeiro pagamento (se houver)
+    const payment = orderData.payments?.[0]
     const isPixPayment = payment?.method === 'PIX' || (payment?.method && String(payment.method).toUpperCase().includes('PIX'))
     const isBoletoPayment = payment?.method === 'BOLETO' || (payment?.method && String(payment.method).toUpperCase().includes('BOLETO'))
     const isCardPayment = payment?.method === 'CREDIT_CARD' || payment?.method === 'CARD' || (payment?.method && String(payment.method).toUpperCase().includes('CARD'))
 
-    // Tenta extrair base64 do gateway_response quando disponível em vários caminhos
     const getPixBase64FromPayment = (p: any) => {
         return p?.pix_qr_image ??
             p?.pix_qr_image_base64 ??
@@ -324,13 +351,11 @@ export default function OrderSuccessPage({ params }: { params: any }) {
 
     const pixBase64 = getPixBase64FromPayment(payment)
 
-    // Obtém a string bruta de prazo (ex.: "Em até 2–3 dias úteis")
     const rawDeliveryTime = findDeliveryTimeString(orderData)
     const deliveryTimeDisplay = rawDeliveryTime
         ? (rawDeliveryTime.toLowerCase().includes('prazo') ? rawDeliveryTime : `Prazo estimado: ${rawDeliveryTime}`)
         : null
 
-    // Build shipping method display (prioriza labels legíveis em sessionStorage / raw)
     const buildShippingMethod = (od: OrderData) => {
         const raw = (od as any).raw ?? {}
         if (od.shippingMethod && typeof od.shippingMethod === 'string' && od.shippingMethod.trim() !== '' && !/^\d+$/.test(String(od.shippingMethod))) {
@@ -377,7 +402,6 @@ export default function OrderSuccessPage({ params }: { params: any }) {
 
     const shippingMethodDisplay = buildShippingMethod(orderData)
 
-    // proxy helpers (mantive suas funções de download/print)
     function buildProxyUrlForPayment(paymentId: string, inline = false) {
         return `${API_URL}/payments/${encodeURIComponent(paymentId)}/boleto${inline ? '?print=1' : ''}`
     }
@@ -492,7 +516,7 @@ export default function OrderSuccessPage({ params }: { params: any }) {
             <NavbarCheckout />
             <main className="flex-1 py-8 px-4 text-black" style={{ background: colors?.segundo_fundo_layout_site || '#e1e4e9' }}>
                 <div className="max-w-4xl mx-auto">
-                    {/* Header de Sucesso (largura total do container) */}
+                    {/* Header de Sucesso */}
                     <div className="bg-white rounded-2xl shadow-lg p-8 mb-6 text-center">
                         <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
                             <CheckCircle className="w-8 h-8 text-green-500" />
@@ -520,7 +544,7 @@ export default function OrderSuccessPage({ params }: { params: any }) {
 
                     {/* grid */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        {/* Informações de Pagamento */}
+                        {/* Pagamento (full width) */}
                         <div className="lg:col-span-3 bg-white rounded-2xl shadow-lg p-6">
                             <div className="flex items-center gap-3 mb-6">
                                 <CircleDollarSign className="w-6 h-6 text-blue-500" />
@@ -541,9 +565,9 @@ export default function OrderSuccessPage({ params }: { params: any }) {
                                     <div className="flex justify-between items-center py-2 border-b">
                                         <span className="text-gray-600">Status:</span>
                                         <span className={`px-3 py-1 rounded-full text-sm font-medium ${payment.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
-                                            payment.status === 'CONFIRMED' || payment.status === 'RECEIVED' ? 'bg-green-100 text-green-800' :
-                                                payment.status === 'FAILED' ? 'bg-red-100 text-red-800' :
-                                                    'bg-gray-100 text-gray-800'
+                                                payment.status === 'CONFIRMED' || payment.status === 'RECEIVED' ? 'bg-green-100 text-green-800' :
+                                                    payment.status === 'FAILED' ? 'bg-red-100 text-red-800' :
+                                                        'bg-gray-100 text-gray-800'
                                             }`}>
                                             {payment.status === 'PENDING' && 'Aguardando Pagamento'}
                                             {payment.status === 'CONFIRMED' && 'Confirmado'}
@@ -698,28 +722,9 @@ export default function OrderSuccessPage({ params }: { params: any }) {
                                     </div>
                                 </div>
                             )}
-
-                            {/* Cartão */}
-                            {isCardPayment && (
-                                <div className="mt-6 p-4 bg-green-50 rounded-lg">
-                                    <div className="flex items-center gap-2 mb-4">
-                                        <CreditCard className="w-6 h-6 text-green-500" />
-                                        <h3 className="font-semibold text-green-800">Cartão de Crédito</h3>
-                                    </div>
-
-                                    <div className="text-sm text-gray-600">
-                                        <p>Pagamento processado com sucesso. Você receberá um e-mail com a confirmação.</p>
-                                        {payment?.transaction_id && (
-                                            <p className="mt-2">
-                                                <span className="font-medium">ID da transação:</span> {payment.transaction_id}
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
                         </div>
 
-                        {/* Informações de Entrega */}
+                        {/* Entrega (full width) */}
                         <div className="lg:col-span-3 bg-white rounded-2xl shadow-lg p-6">
                             <div className="flex items-center gap-3 mb-6">
                                 <Truck className="w-6 h-6 text-blue-500" />
@@ -742,8 +747,6 @@ export default function OrderSuccessPage({ params }: { params: any }) {
                                         <span className="text-gray-600">Previsão de entrega:</span>
                                         <span className="font-medium">{deliveryTimeDisplay ?? 'Prazo indisponível'}</span>
                                     </div>
-                                    {/* opcional: mostrar também o texto cru abaixo, se houver e se for diferente */}
-                                    {/* no requirement você pediu o texto completo; já mostramos acima */}
                                 </div>
 
                                 {orderData.shippingAddress && (
@@ -760,6 +763,7 @@ export default function OrderSuccessPage({ params }: { params: any }) {
                             </div>
                         </div>
                     </div>
+
                 </div>
             </main>
             <FooterCheckout />

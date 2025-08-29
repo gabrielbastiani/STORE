@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useContext, useEffect, useMemo, useState } from 'react'
+import React, { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { AuthContextStore } from '@/app/contexts/AuthContextStore'
 import { useCart } from '@/app/contexts/CartContext'
 import { Dialog } from '@headlessui/react'
@@ -261,7 +261,45 @@ export default function FinishOrderPage() {
 
     /* ------------------ effects ------------------ */
 
-    // on mount: load addresses + create/update AbandonedCart
+    // Keep a ref to latest cart and user for sendBeacon
+    const latestCartRef = useRef(cart)
+    const latestUserRef = useRef(user)
+    latestCartRef.current = cart
+    latestUserRef.current = user
+
+    // debounce timer ref for updates
+    const syncTimerRef = useRef<number | null>(null)
+
+    // helper: map cart context to backend payload
+    function mapCartToPayload(cartObj: any, userObj: any, baseTotal: number, overrideTotal?: number, shippingCostOverride?: number) {
+        return {
+            cart_id: cartObj?.id ?? null,
+            customer_id: userObj?.id ?? null,
+            items: (cartObj?.items ?? []).map((it: any) => ({
+                product_id: it.product_id,
+                quantity: it.quantity,
+                price: it.price ?? 0,
+                variant_id: it.variant_id ?? null,
+            })),
+            subtotal: typeof cartObj?.subtotal === 'number' ? cartObj.subtotal : baseTotal ?? 0,
+            shippingCost: typeof shippingCostOverride === 'number' ? shippingCostOverride : (typeof cartObj?.shippingCost === 'number' ? cartObj.shippingCost : 0),
+            // total: priorize overrideTotal (ex.: totalWithInstallments), senão cart.total, senão baseTotal
+            total: typeof overrideTotal === 'number' ? overrideTotal : (typeof cartObj?.total === 'number' ? cartObj.total : baseTotal ?? 0),
+        }
+    }
+
+    // send update using fetch (keepalive) or setupAPIClient (for normal updates)
+    async function sendAbandonedViaClient(payload: any) {
+        try {
+            // prefer using setupAPIClient (keeps auth cookies/headers if configured)
+            const apiClient = setupAPIClient()
+            await apiClient.post(`/cart/abandoned`, payload)
+        } catch (err) {
+            console.log(err)
+        }
+    }
+
+    // on mount: load addresses + create/update AbandonedCart (debounced to avoid spam)
     useEffect(() => {
         let mounted = true
 
@@ -294,28 +332,114 @@ export default function FinishOrderPage() {
                     }
                 }
 
-                // create/update abandoned cart record on backend
+                // create/update abandoned cart record on backend (only if user logged)
                 try {
-                    const payload = {
-                        cart_id: cart?.id ?? null,
-                        customer_id: user?.id ?? null,
-                        items: cart?.items?.map((it: any) => ({ product_id: it.product_id, quantity: it.quantity, price: it.price })) ?? [],
-                        total: cart?.total ?? payableBase,
-                    }
-                    // se não houver cart id ou items, ignora
-                    if (payload.cart_id && payload.items && payload.items.length > 0) {
-                        const apiClient = setupAPIClient()
-                        const res = await apiClient.post(`/cart/abandoned`, payload);
-                        console.log(res.data)
+                    if (isAuthenticated && user) {
+                        const payload = mapCartToPayload(cart, user, payableBase)
+                        // se não houver cart id ou items, ignora envio
+                        if (payload.cart_id && payload.items && payload.items.length > 0) {
+                            // debounce para evitar múltiplas chamadas rápidas
+                            if (syncTimerRef.current) {
+                                window.clearTimeout(syncTimerRef.current)
+                            }
+                            syncTimerRef.current = window.setTimeout(() => {
+                                sendAbandonedViaClient(payload).catch(e => console.warn('Erro ao enviar abandoned (mount):', e))
+                                syncTimerRef.current = null
+                            }, 250)
+                        }
                     }
                 } catch (err) {
                     console.warn('Não foi possível criar/atualizar AbandonedCart', err)
                 }
             })()
 
-        return () => { mounted = false }
+        return () => { mounted = false; if (syncTimerRef.current) { window.clearTimeout(syncTimerRef.current); syncTimerRef.current = null } }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isAuthenticated, user, cart?.id])
+    }, [isAuthenticated, user?.id, cart?.id])
+
+    // quando o usuário escolhe frete ou quando o total com parcelas muda, envie atualização
+    useEffect(() => {
+        if (!isAuthenticated || !user) return
+        const shippingCostToSend = currentFrete ?? 0
+        const totalToSend = totalWithInstallments ?? payableBase
+
+        // não enviar se não tem items
+        if (!cart?.items || cart.items.length === 0) return
+
+        const payload = mapCartToPayload(cart, user, payableBase, totalToSend, shippingCostToSend)
+
+        // debounce curto
+        if (syncTimerRef.current) {
+            window.clearTimeout(syncTimerRef.current)
+        }
+        syncTimerRef.current = window.setTimeout(() => {
+            sendAbandonedViaClient(payload).catch(e => console.warn('Erro ao enviar abandoned (frete/total change):', e))
+            syncTimerRef.current = null
+        }, 200)
+
+        return () => { if (syncTimerRef.current) { window.clearTimeout(syncTimerRef.current); syncTimerRef.current = null } }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedShippingId, totalWithInstallments, currentFrete])
+
+    // Sync when cart items change (debounced)
+    useEffect(() => {
+        if (!isAuthenticated || !user) return
+        // don't send if empty
+        const itemsLen = (cart?.items ?? []).length
+        if (!itemsLen) return
+
+        if (syncTimerRef.current) {
+            window.clearTimeout(syncTimerRef.current)
+        }
+        syncTimerRef.current = window.setTimeout(() => {
+            const payload = mapCartToPayload(cart, user, payableBase)
+            sendAbandonedViaClient(payload).catch(e => console.warn('Erro ao enviar abandoned (items change):', e))
+            syncTimerRef.current = null
+        }, 300)
+        return () => { if (syncTimerRef.current) { window.clearTimeout(syncTimerRef.current); syncTimerRef.current = null } }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [cart?.items?.length, cart?.id])
+
+    // enviar ao sair/fechar aba com navigator.sendBeacon (mais confiável)
+    useEffect(() => {
+        if (!isAuthenticated || !user) return
+
+        const handleSendOnExit = () => {
+            const payload = mapCartToPayload(latestCartRef.current, latestUserRef.current, payableBase)
+            if (!payload || !payload.items || payload.items.length === 0) return
+
+            const url = `${API_URL}/cart/abandoned`
+            const data = JSON.stringify(payload)
+            try {
+                const blob = new Blob([data], { type: 'application/json' })
+                if (navigator && typeof navigator.sendBeacon === 'function') {
+                    navigator.sendBeacon(url, blob)
+                } else {
+                    // fallback keepalive fetch
+                    fetch(url, { method: 'POST', body: data, headers: { 'Content-Type': 'application/json' }, keepalive: true }).catch(() => { /* ignore */ })
+                }
+            } catch (e) {
+                try {
+                    fetch(url, { method: 'POST', body: data, headers: { 'Content-Type': 'application/json' }, keepalive: true }).catch(() => { /* ignore */ })
+                } catch { /* ignore */ }
+            }
+        }
+
+        const onVisibility = () => {
+            if (document.visibilityState === 'hidden') handleSendOnExit()
+        }
+
+        document.addEventListener('visibilitychange', onVisibility)
+        window.addEventListener('pagehide', handleSendOnExit)
+        window.addEventListener('beforeunload', handleSendOnExit)
+
+        return () => {
+            document.removeEventListener('visibilitychange', onVisibility)
+            window.removeEventListener('pagehide', handleSendOnExit)
+            window.removeEventListener('beforeunload', handleSendOnExit)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isAuthenticated, user?.id])
 
     // load payments
     useEffect(() => {
