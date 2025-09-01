@@ -7,7 +7,7 @@ import { useTheme } from '@/app/contexts/ThemeContext'
 import { NavbarCheckout } from '@/app/components/navbar/navbarCheckout'
 import { FooterCheckout } from '@/app/components/footer/footerCheckout'
 import { api } from '@/services/apiClient'
-import { CheckCircle, Copy, Download, Clock, FileText, Truck, MapPin, QrCode, CircleDollarSign, CreditCard } from 'lucide-react'
+import { CheckCircle, Copy, Download, Clock, FileText, Truck, MapPin, QrCode, CircleDollarSign, CreditCard, Loader2, X } from 'lucide-react'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? ''
 
@@ -156,7 +156,7 @@ const findDeliveryTimeString = (od: OrderData): string | null => {
         r.delivery?.deliveryTime,
     ]
     for (const c of directCandidates) {
-        if (typeof c === 'string' && c.trim() !== '') return c.trim()
+        if (typeof c === 'string' && c.trim() !== '00:00') return c.trim()
     }
 
     const arrays = [r.options, r.shippingOptions, r.quotes, r.shipping?.options, r.optionsArray].filter(Boolean)
@@ -196,6 +196,10 @@ export default function OrderSuccessPage({ params }: { params: any }) {
     const [orderData, setOrderData] = useState<OrderData | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
+    const [downloadingBoleto, setDownloadingBoleto] = useState(false)
+    const [downloadingBoletoId, setDownloadingBoletoId] = useState<string | null>(null)
+    const [showDownloadOverlay, setShowDownloadOverlay] = useState(false)
+    const [downloadStatus, setDownloadStatus] = useState<'pending' | 'processing' | 'completed' | 'failed'>('pending')
 
     const copyToClipboard = async (text: string, label: string) => {
         try {
@@ -298,6 +302,189 @@ export default function OrderSuccessPage({ params }: { params: any }) {
         return () => { mounted = false }
     }, [params])
 
+    const buildShippingMethod = (od: OrderData) => {
+        const raw = (od as any).raw ?? {}
+        if (od.shippingMethod && typeof od.shippingMethod === 'string' && od.shippingMethod.trim() !== '' && !/^\d+$/.test(String(od.shippingMethod))) {
+            return od.shippingMethod
+        }
+
+        try {
+            const sessionKey = `lastOrder:${od.id}`
+            const rawSession = sessionStorage.getItem(sessionKey)
+            if (rawSession) {
+                const parsed = JSON.parse(rawSession)
+                const sp = parsed.orderData ?? parsed
+                if (sp) {
+                    if (sp.shippingLabel) return sp.shippingLabel
+                    if (sp.shippingRaw?.name) return sp.shippingRaw.name
+                }
+            }
+        } catch { /* ignore */ }
+
+        const candidates = [
+            raw.shippingRaw,
+            raw.shipping,
+            raw.options?.find?.((o: any) => String(o.id) === String(od.shippingMethod)) ?? null,
+            raw.shippingOptions?.find?.((o: any) => String(o.id) === String(od.shippingMethod)) ?? null,
+            raw.options?.[0] ?? null,
+            raw.shipping?.name ?? raw.provider ?? raw.carrier ?? null
+        ]
+        for (const c of candidates) {
+            if (!c) continue
+            if (typeof c === 'string' && c.trim() !== '') return c
+            if (typeof c.name === 'string' && c.name.trim() !== '') return c.name
+            if (typeof c.service === 'string' && c.service.trim() !== '') return c.service
+            if (typeof c.provider === 'string' && c.provider.trim() !== '') return c.provider
+            if (typeof c.carrier === 'string' && c.carrier.trim() !== '') return c.carrier
+        }
+
+        if (od.shippingMethod != null) {
+            const s = String(od.shippingMethod)
+            if (/^\d+$/.test(s)) return `Transportadora #${s}`
+            if (s.trim() !== '') return s
+        }
+        return 'Padrão'
+    }
+
+    const shippingMethodDisplay = orderData ? buildShippingMethod(orderData) : ''
+
+    async function downloadPdfProxy(paymentObj: any) {
+        if (!paymentObj && !orderData?.id) return;
+
+        setDownloadingBoleto(true);
+        setDownloadingBoletoId(paymentObj?.id || String(orderData?.id));
+        setShowDownloadOverlay(true);
+        setDownloadStatus('processing');
+
+        const paymentId = paymentObj?.id || orderData?.id;
+        const proxyUrl = `${API_URL}/payments/${paymentId}/boleto`;
+
+        try {
+            // Usar uma abordagem mais confiável com link temporário
+            const link = document.createElement('a');
+            link.href = proxyUrl;
+            link.target = '_blank';
+            link.download = `boleto-${paymentId}.pdf`;
+
+            // Adicionar evento para detectar quando o download é iniciado
+            link.onclick = () => {
+                // Fechar o modal após um tempo suficiente para o download iniciar
+                setTimeout(() => {
+                    setDownloadStatus('completed');
+                    setTimeout(() => {
+                        setShowDownloadOverlay(false);
+                        setDownloadingBoleto(false);
+                        setDownloadingBoletoId(null);
+                    }, 1000);
+                }, 3000);
+            };
+
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            // Timeout de segurança para garantir que não fique travado
+            setTimeout(() => {
+                if (downloadStatus === 'processing') {
+                    setDownloadStatus('completed');
+                    setTimeout(() => {
+                        setShowDownloadOverlay(false);
+                        setDownloadingBoleto(false);
+                        setDownloadingBoletoId(null);
+                    }, 1000);
+                }
+            }, 8000);
+
+        } catch (error) {
+            console.error('Erro ao processar boleto:', error);
+            setDownloadStatus('failed');
+            toast.error('Não foi possível processar o boleto automaticamente');
+
+            setTimeout(() => {
+                setShowDownloadOverlay(false);
+                setDownloadingBoleto(false);
+                setDownloadingBoletoId(null);
+            }, 3000);
+        }
+    }
+
+    async function printPdfProxy(paymentObj: any) {
+        if (!paymentObj && !orderData?.id) return;
+
+        setDownloadingBoleto(true);
+        setDownloadingBoletoId(paymentObj?.id || String(orderData?.id));
+        setShowDownloadOverlay(true);
+        setDownloadStatus('processing');
+
+        const paymentId = paymentObj?.id || orderData?.id;
+        const proxyUrl = `${API_URL}/payments/${paymentId}/boleto?print=1`;
+
+        try {
+            // Abrir em nova janela para impressão
+            const printWindow = window.open(proxyUrl, '_blank');
+
+            if (!printWindow) {
+                setDownloadStatus('failed');
+                toast.error('Permita pop-ups para esta página para imprimir o boleto');
+                setTimeout(() => {
+                    setShowDownloadOverlay(false);
+                    setDownloadingBoleto(false);
+                    setDownloadingBoletoId(null);
+                }, 3000);
+                return;
+            }
+
+            // Verificar se a janela foi carregada com sucesso
+            const checkWindow = setInterval(() => {
+                if (printWindow.closed) {
+                    clearInterval(checkWindow);
+                    setDownloadStatus('completed');
+                    setTimeout(() => {
+                        setShowDownloadOverlay(false);
+                        setDownloadingBoleto(false);
+                        setDownloadingBoletoId(null);
+                    }, 1000);
+                } else if (printWindow.document.readyState === 'complete') {
+                    clearInterval(checkWindow);
+                    setDownloadStatus('completed');
+                    setTimeout(() => {
+                        setShowDownloadOverlay(false);
+                        setDownloadingBoleto(false);
+                        setDownloadingBoletoId(null);
+                    }, 1000);
+                }
+            }, 500);
+
+            // Timeout para garantir que não fique travado
+            setTimeout(() => {
+                clearInterval(checkWindow);
+                setDownloadStatus('completed');
+                setTimeout(() => {
+                    setShowDownloadOverlay(false);
+                    setDownloadingBoleto(false);
+                    setDownloadingBoletoId(null);
+                }, 1000);
+            }, 10000);
+
+        } catch (error) {
+            console.error('Erro ao imprimir boleto:', error);
+            setDownloadStatus('failed');
+            toast.error('Não foi possível preparar o boleto para impressão');
+
+            setTimeout(() => {
+                setShowDownloadOverlay(false);
+                setDownloadingBoleto(false);
+                setDownloadingBoletoId(null);
+            }, 3000);
+        }
+    }
+
+    const closeOverlay = () => {
+        setShowDownloadOverlay(false);
+        setDownloadingBoleto(false);
+        setDownloadingBoletoId(null);
+    }
+
     if (loading) {
         return (
             <>
@@ -356,165 +543,59 @@ export default function OrderSuccessPage({ params }: { params: any }) {
         ? (rawDeliveryTime.toLowerCase().includes('prazo') ? rawDeliveryTime : `Prazo estimado: ${rawDeliveryTime}`)
         : null
 
-    const buildShippingMethod = (od: OrderData) => {
-        const raw = (od as any).raw ?? {}
-        if (od.shippingMethod && typeof od.shippingMethod === 'string' && od.shippingMethod.trim() !== '' && !/^\d+$/.test(String(od.shippingMethod))) {
-            return od.shippingMethod
-        }
-
-        try {
-            const sessionKey = `lastOrder:${od.id}`
-            const rawSession = sessionStorage.getItem(sessionKey)
-            if (rawSession) {
-                const parsed = JSON.parse(rawSession)
-                const sp = parsed.orderData ?? parsed
-                if (sp) {
-                    if (sp.shippingLabel) return sp.shippingLabel
-                    if (sp.shippingRaw?.name) return sp.shippingRaw.name
-                }
-            }
-        } catch { /* ignore */ }
-
-        const candidates = [
-            raw.shippingRaw,
-            raw.shipping,
-            raw.options?.find?.((o: any) => String(o.id) === String(od.shippingMethod)) ?? null,
-            raw.shippingOptions?.find?.((o: any) => String(o.id) === String(od.shippingMethod)) ?? null,
-            raw.options?.[0] ?? null,
-            raw.shipping?.name ?? raw.provider ?? raw.carrier ?? null
-        ]
-        for (const c of candidates) {
-            if (!c) continue
-            if (typeof c === 'string' && c.trim() !== '') return c
-            if (typeof c.name === 'string' && c.name.trim() !== '') return c.name
-            if (typeof c.service === 'string' && c.service.trim() !== '') return c.service
-            if (typeof c.provider === 'string' && c.provider.trim() !== '') return c.provider
-            if (typeof c.carrier === 'string' && c.carrier.trim() !== '') return c.carrier
-        }
-
-        if (od.shippingMethod != null) {
-            const s = String(od.shippingMethod)
-            if (/^\d+$/.test(s)) return `Transportadora #${s}`
-            if (s.trim() !== '') return s
-        }
-        return 'Padrão'
-    }
-
-    const shippingMethodDisplay = buildShippingMethod(orderData)
-
-    function buildProxyUrlForPayment(paymentId: string, inline = false) {
-        return `${API_URL}/payments/${encodeURIComponent(paymentId)}/boleto${inline ? '?print=1' : ''}`
-    }
-    function buildProxyUrlForOrder(orderId: string, inline = false) {
-        return `${API_URL}/orders/${encodeURIComponent(orderId)}/boleto${inline ? '?print=1' : ''}`
-    }
-
-    async function downloadPdfProxy(paymentObj: any) {
-        if (!paymentObj && !orderData?.id) return;
-        let proxyUrl: string | null = null;
-        if (paymentObj?.id) proxyUrl = buildProxyUrlForPayment(paymentObj.id, false);
-        else if (orderData?.id) proxyUrl = buildProxyUrlForOrder(String(orderData.id), false);
-
-        if (proxyUrl) {
-            try {
-                const res = await fetch(proxyUrl, { method: 'GET', credentials: 'same-origin' });
-                if (!res.ok) throw new Error('Falha no proxy');
-                const contentType = res.headers.get('content-type') ?? '';
-                if (contentType.includes('application/pdf') || contentType.includes('application/octet-stream')) {
-                    const blob = await res.blob();
-                    const blobUrl = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = blobUrl;
-                    a.download = `boleto-${paymentObj?.id ?? orderData?.id}.pdf`;
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                    window.URL.revokeObjectURL(blobUrl);
-                    return;
-                }
-                const finalUrl = res.url || proxyUrl;
-                window.open(finalUrl, '_blank');
-                return;
-            } catch (err) {
-                console.warn('Proxy boleto falhou, tentando URL original', err);
-            }
-        }
-
-        if (paymentObj?.boleto_url) {
-            try {
-                const res = await fetch(paymentObj.boleto_url, { method: 'GET', credentials: 'same-origin' });
-                if (res.ok && (res.headers.get('content-type') || '').includes('application/pdf')) {
-                    const blob = await res.blob();
-                    const blobUrl = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = blobUrl;
-                    a.download = `boleto-${paymentObj.id ?? orderData?.id}.pdf`;
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                    window.URL.revokeObjectURL(blobUrl);
-                    return;
-                }
-            } catch { /* fallback open */ }
-            window.open(paymentObj.boleto_url, '_blank');
-        } else {
-            toast.error('URL do boleto não disponível');
-        }
-    }
-
-    async function printPdfProxy(paymentObj: any) {
-        if (!paymentObj && !orderData?.id) return;
-        let proxyUrl: string | null = null;
-        if (paymentObj?.id) proxyUrl = buildProxyUrlForPayment(paymentObj.id, true);
-        else if (orderData?.id) proxyUrl = buildProxyUrlForOrder(String(orderData.id), true);
-
-        if (proxyUrl) {
-            try {
-                const res = await fetch(proxyUrl, { method: 'GET', credentials: 'same-origin' });
-                if (!res.ok) throw new Error('Falha no proxy');
-                const contentType = res.headers.get('content-type') ?? '';
-                if (contentType.includes('application/pdf') || contentType.includes('application/octet-stream')) {
-                    const blob = await res.blob();
-                    const blobUrl = window.URL.createObjectURL(blob);
-                    const printWindow = window.open('', '_blank');
-                    if (!printWindow) { window.open(blobUrl, '_blank'); return; }
-                    printWindow.document.write(`
-                        <html>
-                          <head><title>Imprimir Boleto</title></head>
-                          <body style="margin:0">
-                            <iframe src="${blobUrl}" style="width:100%;height:100vh;border:none"></iframe>
-                            <script>
-                              const iframe = document.querySelector('iframe');
-                              iframe.onload = function() {
-                                try {
-                                  setTimeout(() => { iframe.contentWindow.focus(); iframe.contentWindow.print(); }, 500);
-                                } catch(e) {
-                                  window.open('${blobUrl}', '_blank');
-                                }
-                              }
-                            <\/script>
-                          </body>
-                        </html>
-                    `);
-                    printWindow.document.close();
-                    return;
-                }
-                const finalUrl = res.url || proxyUrl;
-                window.open(finalUrl, '_blank');
-                return;
-            } catch (err) {
-                console.warn('Proxy print falhou, fallback para boleto_url', err);
-            }
-        }
-
-        if (paymentObj?.boleto_url) window.open(paymentObj.boleto_url, '_blank')
-        else toast.error('URL do boleto não disponível para impressão')
-    }
+    const isDownloadingCurrentBoleto = downloadingBoleto && downloadingBoletoId === (payment?.id || String(orderData.id))
 
     return (
         <>
             <NavbarCheckout />
-            <main className="flex-1 py-8 px-4 text-black" style={{ background: colors?.segundo_fundo_layout_site || '#e1e4e9' }}>
+            <main className="flex-1 py-8 px-4 text-black relative" style={{ background: colors?.segundo_fundo_layout_site || '#e1e4e9' }}>
+
+                {/* Overlay de Download */}
+                {showDownloadOverlay && (
+                    <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+                        <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 text-center">
+                            <div className="flex justify-center mb-6">
+                                {downloadStatus === 'processing' && (
+                                    <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-orange-500"></div>
+                                )}
+                                {downloadStatus === 'completed' && (
+                                    <CheckCircle className="w-16 h-16 text-green-500" />
+                                )}
+                                {downloadStatus === 'failed' && (
+                                    <X className="w-16 h-16 text-red-500" />
+                                )}
+                            </div>
+
+                            <h3 className="text-xl font-bold text-gray-800 mb-4">
+                                {downloadStatus === 'processing' && 'Gerando seu boleto...'}
+                                {downloadStatus === 'completed' && 'Boleto gerado com sucesso!'}
+                                {downloadStatus === 'failed' && 'Falha ao gerar boleto'}
+                            </h3>
+
+                            <p className="text-gray-600 mb-6">
+                                {downloadStatus === 'processing' && 'Aguarde enquanto preparamos seu boleto para download. Isso pode levar alguns instantes.'}
+                                {downloadStatus === 'completed' && 'O download do seu boleto foi iniciado. Verifique sua pasta de downloads.'}
+                                {downloadStatus === 'failed' && 'Não foi possível gerar o boleto. Tente novamente ou entre em contato com o suporte.'}
+                            </p>
+
+                            {downloadStatus === 'processing' && (
+                                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                                    <div className="bg-orange-500 h-2.5 rounded-full animate-pulse" style={{ width: '45%' }}></div>
+                                </div>
+                            )}
+
+                            {(downloadStatus === 'completed' || downloadStatus === 'failed') && (
+                                <button
+                                    onClick={closeOverlay}
+                                    className="bg-orange-500 text-white px-6 py-3 rounded-lg hover:bg-orange-600 transition-colors w-full"
+                                >
+                                    Fechar
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 <div className="max-w-4xl mx-auto">
                     {/* Header de Sucesso */}
                     <div className="bg-white rounded-2xl shadow-lg p-8 mb-6 text-center">
@@ -565,9 +646,9 @@ export default function OrderSuccessPage({ params }: { params: any }) {
                                     <div className="flex justify-between items-center py-2 border-b">
                                         <span className="text-gray-600">Status:</span>
                                         <span className={`px-3 py-1 rounded-full text-sm font-medium ${payment.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
-                                                payment.status === 'CONFIRMED' || payment.status === 'RECEIVED' ? 'bg-green-100 text-green-800' :
-                                                    payment.status === 'FAILED' ? 'bg-red-100 text-red-800' :
-                                                        'bg-gray-100 text-gray-800'
+                                            payment.status === 'CONFIRMED' || payment.status === 'RECEIVED' ? 'bg-green-100 text-green-800' :
+                                                payment.status === 'FAILED' ? 'bg-red-100 text-red-800' :
+                                                    'bg-gray-100 text-gray-800'
                                             }`}>
                                             {payment.status === 'PENDING' && 'Aguardando Pagamento'}
                                             {payment.status === 'CONFIRMED' && 'Confirmado'}
@@ -675,16 +756,37 @@ export default function OrderSuccessPage({ params }: { params: any }) {
                                             <div className="flex gap-2 flex-wrap">
                                                 <button
                                                     onClick={() => downloadPdfProxy(payment)}
-                                                    className="w-full md:w-auto flex items-center justify-center gap-2 bg-orange-600 text-white px-6 py-3 rounded-lg hover:bg-orange-700 transition-colors"
+                                                    disabled={downloadingBoleto}
+                                                    className="w-full md:w-auto flex items-center justify-center gap-2 bg-orange-600 text-white px-6 py-3 rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                                 >
-                                                    <Download size={16} /> Visualizar/Baixar Boleto
+                                                    {isDownloadingCurrentBoleto ? (
+                                                        <>
+                                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                                            Gerando boleto...
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Download size={16} />
+                                                            Visualizar/Baixar Boleto
+                                                        </>
+                                                    )}
                                                 </button>
 
                                                 <button
                                                     onClick={() => printPdfProxy(payment)}
-                                                    className="w-full md:w-auto flex items-center justify-center gap-2 border border-orange-600 text-orange-600 px-6 py-3 rounded-lg hover:bg-orange-50 transition-colors"
+                                                    disabled={downloadingBoleto}
+                                                    className="w-full md:w-auto flex items-center justify-center gap-2 border border-orange-600 text-orange-600 px-6 py-3 rounded-lg hover:bg-orange-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                                 >
-                                                    🖨️ Imprimir Boleto
+                                                    {isDownloadingCurrentBoleto ? (
+                                                        <>
+                                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                                            Preparando...
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            🖨️ Imprimir Boleto
+                                                        </>
+                                                    )}
                                                 </button>
                                             </div>
                                         )}
