@@ -13,6 +13,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? ''
 
 interface OrderData {
     id: string | number
+    id_order_store: string
     total?: number
     shippingCost?: number
     grandTotal?: number
@@ -260,6 +261,7 @@ export default function OrderSuccessPage({ params }: { params: any }) {
 
                 const normalizedFromApi: OrderData = {
                     id: data.id ?? id,
+                    id_order_store: data.id_order_store ?? undefined,
                     total: data.total ?? data.amount ?? undefined,
                     shippingCost: data.shippingCost ?? data.shipping_cost ?? data.shipping?.cost ?? undefined,
                     grandTotal: data.grandTotal ?? data.grand_total ?? undefined,
@@ -608,13 +610,7 @@ export default function OrderSuccessPage({ params }: { params: any }) {
                         </p>
                         <div className="inline-block bg-gray-100 px-4 py-2 rounded-lg">
                             <span className="text-sm text-gray-600">Pedido #</span>
-                            <span className="font-bold text-gray-800">{orderData.id}</span>
-                            <button
-                                onClick={() => copyToClipboard(String(orderData.id), 'ID do pedido')}
-                                className="ml-2 text-gray-500 hover:text-gray-700"
-                            >
-                                <Copy size={16} />
-                            </button>
+                            <span className="font-bold text-gray-800">{orderData?.id_order_store}</span>
                         </div>
                         {orderData.createdAt && (
                             <p className="text-sm text-gray-500 mt-2">
@@ -863,6 +859,10 @@ export default function OrderSuccessPage({ params }: { params: any }) {
                                     </div>
                                 )}
                             </div>
+                        </div>
+
+                        <div className="lg:col-span-3 bg-white rounded-2xl shadow-lg p-6">
+                            <button onClick={() => router.push('/meus-dados')} className="w-full bg-orange-600 hover:bg-orange-700 text-white py-3 rounded">Ver meus pedidos</button>
                         </div>
                     </div>
 
