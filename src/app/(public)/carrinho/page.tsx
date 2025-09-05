@@ -2,14 +2,12 @@
 
 import React, { ChangeEvent, useCallback, useContext, useEffect, useState } from "react";
 import Image from "next/image";
-import { FiTrash2, FiPlus, FiMinus, FiX } from "react-icons/fi";
+import { FiTrash2, FiPlus, FiMinus } from "react-icons/fi";
 import { useTheme } from "@/app/contexts/ThemeContext";
 import { useCart } from "@/app/contexts/CartContext";
-import { usePromotions, PromotionDetail } from "@/app/hooks/usePromotions";
 import { toast } from "react-toastify";
 import { NavbarCheckout } from "@/app/components/navbar/navbarCheckout";
 import { FooterCheckout } from "@/app/components/footer/footerCheckout";
-import axios from "axios";
 import { SelectedOption } from "Types/types";
 import { useRouter } from "next/navigation";
 import { AuthContextStore } from "@/app/contexts/AuthContextStore";
@@ -39,56 +37,12 @@ export default function CartPage() {
 
   const [loadingFrete, setLoadingFrete] = useState(false);
 
-  // cupom
-  const [couponInput, setCouponInput] = useState("");
-  const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
-  const [validatingCoupon, setValidatingCoupon] = useState(false);
-
-  // is first purchase?
-  const isFirstPurchase = false;
-
   // Frete atual
   const currentFrete = selectedShipping ? (shippingOptions.find((o) => o.id === selectedShipping)?.price || 0) : 0;
 
-  // Hook de promoções
-  const {
-    discountTotal,
-    freeGifts,
-    badgeMap,
-    promotions,
-    loading: loadingPromo,
-    error: promoError,
-  } = usePromotions(cep, appliedCoupon, currentFrete, isFirstPurchase);
-
-  const shippingDiscount = promotions.filter((p) => p.type === 'shipping').reduce((s, p) => s + p.discount, 0);
-  const productDiscount = (discountTotal ?? 0) - shippingDiscount;
-
-  // gift lookup
-  const [giftInfo, setGiftInfo] = useState<Record<string, { name: string; type: "produto" | "variante" }>>({});
-
-  useEffect(() => {
-    const missing = freeGifts.map((g) => g.variantId).filter((id) => id && !giftInfo[id]);
-    if (missing.length === 0) return;
-    missing.forEach(async (id) => {
-      try {
-        const prodRes = await axios.get<{ name: string }>(`${API_URL}/product/unique/data?product_id=${id}`);
-        if (prodRes.data?.name) {
-          setGiftInfo((prev) => ({ ...prev, [id]: { name: prodRes.data.name, type: "produto" } }));
-          return;
-        }
-      } catch { }
-      try {
-        const varRes = await axios.get<{ sku?: string; name?: string }>(`${API_URL}/variant/get/unique?variant_id=${id}`);
-        const fallback = varRes.data?.sku ?? varRes.data?.name ?? "Desconhecido";
-        setGiftInfo((prev) => ({ ...prev, [id]: { name: fallback, type: "variante" } }));
-      } catch {
-        setGiftInfo((prev) => ({ ...prev, [id]: { name: "Produto desconhecido", type: "produto" } }));
-      }
-    });
-  }, [freeGifts, giftInfo]);
-
   const fmt = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format;
-  const total = (cart?.subtotal ?? 0) - (productDiscount ?? 0) + (currentFrete - (shippingDiscount ?? 0));
+  // total sem promoções (promoções removidas desta página)
+  const total = (cart?.subtotal ?? 0) + currentFrete;
 
   function handleCepChange(e: ChangeEvent<HTMLInputElement>) {
     let digits = e.target.value.replace(/\D/g, "").slice(0, 8);
@@ -147,43 +101,6 @@ export default function CartPage() {
       calculateShipping();
     }
   }, [cart.items, cep, shippingOptions.length, calculateShipping]);
-
-  async function applyCoupon() {
-    const code = couponInput.trim();
-    if (!code) return;
-    setValidatingCoupon(true);
-    try {
-      const res = await axios.post<{ valid: boolean }>(`${API_URL}/coupon/validate`, {
-        cartItems: cart.items.map(i => ({
-          variantId: i.variant_id,
-          productId: i.product_id,
-          quantity: i.quantity,
-          unitPrice: i.price,
-        })),
-        customer_id: cart.id || null,
-        isFirstPurchase,
-        cep: cep || null,
-        shippingCost: currentFrete,
-        coupon: code,
-      });
-      if (res.data?.valid) {
-        setAppliedCoupon(code);
-        toast.success(`Cupom “${code}” aplicado!`);
-      } else {
-        toast.error("Cupom inválido, desativado ou não cadastrado.");
-      }
-    } catch {
-      toast.error("Erro ao validar cupom. Tente novamente.");
-    } finally {
-      setValidatingCoupon(false);
-    }
-  }
-
-  function removeCoupon() {
-    setAppliedCoupon(null);
-    setCouponInput("");
-    toast.info("Cupom removido");
-  }
 
   // helper para resolver src de imagem (path local ou remoto)
   const resolveImageSrc = (src?: string) => {
@@ -338,83 +255,17 @@ export default function CartPage() {
             </div>
           )}
 
-          {/* Cupom */}
-          <div className="bg-white p-4 rounded shadow space-y-2">
-            <label className="block text-sm font-medium text-gray-700">Possui cupom?</label>
-
-            {!appliedCoupon ? (
-              <div className="flex space-x-2">
-                <input type="text" value={couponInput} onChange={(e) => setCouponInput(e.target.value)} placeholder="Código" className="flex-1 border border-gray-300 rounded px-3 py-2 text-black" />
-                <button onClick={applyCoupon} disabled={!couponInput.trim() || validatingCoupon} className="bg-gray-800 text-white px-4 rounded disabled:opacity-50">
-                  {validatingCoupon ? "Validando…" : "Aplicar"}
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between bg-indigo-50 p-2 rounded">
-                <span className="text-indigo-800">Cupom <strong>{appliedCoupon}</strong> aplicado</span>
-                <button onClick={removeCoupon} className="p-1 text-indigo-600 hover:text-indigo-900" title="Remover cupom"><FiX /></button>
-              </div>
-            )}
-
-            {loadingPromo && <p className="text-red-200">Aplicando promoções…</p>}
-            {promoError && <p className="text-red-600">{promoError}</p>}
-            {!promoError && (discountTotal ?? 0) > 0 && <p className="text-green-600">Desconto: -{fmt(discountTotal ?? 0)}</p>}
-          </div>
-
-          {/* Promoções aplicadas */}
-          {promotions.length > 0 && (
-            <div className="bg-gray-50 p-4 rounded space-y-2">
-              <h3 className="font-semibold text-black">Promoções aplicadas</h3>
-              <ul className="list-disc list-inside">
-                {promotions.map((p: PromotionDetail) => (
-                  <li key={p.id} className="flex justify-between items-start">
-                    <div>{p.description && <p className="text-sm text-gray-600">{p.description}</p>}</div>
-                    <span className={p.type === "shipping" ? "text-blue-600" : p.type === "product" ? "text-green-600" : "text-gray-600"}>-{fmt(p.discount)}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
           {/* Totais */}
           <div className="bg-white p-4 rounded shadow space-y-1">
             <div className="flex justify-between">
               <span className="text-gray-700">Subtotal</span>
               <span className="text-black">{fmt(cart.subtotal ?? 0)}</span>
             </div>
-            {(discountTotal ?? 0) > 0 && (
-              <div className="flex justify-between text-green-600">
-                <span className="text-gray-700">Desconto</span>
-                <span>-{fmt(discountTotal ?? 0)}</span>
-              </div>
-            )}
 
             {currentFrete > 0 && (
-              <>
-                {shippingDiscount > 0 ? (
-                  <>
-                    <div className="flex justify-between">
-                      <span className="text-gray-700">Frete</span>
-                      <span className="line-through text-gray-500">{fmt(currentFrete)}</span>
-                    </div>
-                    <div className="flex justify-between text-blue-600 font-semibold">
-                      <span className="text-gray-700">Frete (com desconto)</span>
-                      <span>{fmt(currentFrete - shippingDiscount)}</span>
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex justify-between">
-                    <span className="text-gray-700">Frete</span>
-                    <span className="text-black">{fmt(currentFrete)}</span>
-                  </div>
-                )}
-              </>
-            )}
-
-            {productDiscount > 0 && (
-              <div className="flex justify-between text-green-600">
-                <span className="text-gray-700">Desconto</span>
-                <span>-{fmt(productDiscount)}</span>
+              <div className="flex justify-between">
+                <span className="text-gray-700">Frete</span>
+                <span className="text-black">{fmt(currentFrete)}</span>
               </div>
             )}
 
@@ -425,17 +276,6 @@ export default function CartPage() {
 
             <p className="text-xs text-gray-500">12x de {fmt(total / 12)} sem juros</p>
           </div>
-
-          {/* Brindes */}
-          {freeGifts.length > 0 && (
-            <div className="bg-green-50 p-3 rounded text-green-800 text-sm">
-              🎁 Você ganhou:&nbsp;
-              {freeGifts.map((g) => {
-                const info = giftInfo[g.variantId] || { name: "Desconhecido", type: "produto" };
-                return <span key={g.variantId}>{g.quantity}× {info.type} “{info.name}”&nbsp;</span>;
-              })}
-            </div>
-          )}
 
           {/* Ações finais */}
           <div className="space-y-2">

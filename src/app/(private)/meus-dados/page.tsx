@@ -26,7 +26,7 @@ export default function MinhaContaPage() {
     if (!user) {
         return (
             <div className="flex items-center justify-center h-screen">
-                <p>Você precisa estar logado para acessar esta página.</p>
+                <p>Você esta saindo da sua conta...</p>
             </div>
         );
     }
