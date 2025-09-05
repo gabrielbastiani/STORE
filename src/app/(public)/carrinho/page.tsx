@@ -35,6 +35,8 @@ export default function CartPage() {
   const [shippingOptions, setShippingOptions] = useState<ShippingOption[]>([]);
   const [selectedShipping, setSelectedShipping] = useState<string | null>(null);
 
+  console.log(shippingOptions)
+
   const [loadingFrete, setLoadingFrete] = useState(false);
 
   // Frete atual
@@ -241,16 +243,22 @@ export default function CartPage() {
           {shippingOptions.length > 0 && (
             <div className="bg-white p-4 rounded shadow space-y-2 text-black">
               {shippingOptions.map((opt) => (
-                <div key={opt.id} className="flex items-center justify-between">
-                  <label className="flex-1 cursor-pointer">
-                    <input type="radio" name="shipping" value={opt.id} checked={selectedShipping === opt.id} onChange={() => setSelectedShipping(opt.id)} className="mr-2 text-black" />
-                    <span className="font-medium">{opt.name}</span>
-                  </label>
-                  <div className="text-right">
-                    <p>{fmt(opt.price)}</p>
-                    <p className="text-xs text-gray-500">{opt.deliveryTime}</p>
-                  </div>
-                </div>
+                <>
+                  {opt.price === null ?
+                    null
+                    :
+                    <div key={opt.id} className="flex items-center justify-between">
+                      <label className="flex-1 cursor-pointer">
+                        <input type="radio" name="shipping" value={opt.id} checked={selectedShipping === opt.id} onChange={() => setSelectedShipping(opt.id)} className="mr-2 text-black" />
+                        <span className="font-medium">{opt.name}</span>
+                      </label>
+                      <div className="text-right">
+                        <p>{fmt(opt.price)}</p>
+                        <p className="text-xs text-gray-500">{opt.deliveryTime}</p>
+                      </div>
+                    </div>
+                  }
+                </>
               ))}
             </div>
           )}

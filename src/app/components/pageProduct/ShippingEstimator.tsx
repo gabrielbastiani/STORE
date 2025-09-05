@@ -234,23 +234,29 @@ export default function ShippingEstimator({
             {shippingOptions.length > 0 && (
                 <div className="space-y-2 mt-2">
                     {shippingOptions.map((opt) => (
-                        <div key={opt.id} className="flex items-center justify-between">
-                            <label className="flex-1 cursor-pointer">
-                                <input
-                                    type="radio"
-                                    name={`shipping-${product?.id}`}
-                                    value={opt.id}
-                                    checked={selectedShippingId === opt.id}
-                                    onChange={() => handleSelect(opt.id)}
-                                    className="mr-2"
-                                />
-                                <span className="font-medium">{opt.name}</span>
-                            </label>
-                            <div className="text-right">
-                                <p className="font-semibold">{fmt(opt.price)}</p>
-                                <p className="text-xs text-gray-500">{opt.deliveryTime}</p>
-                            </div>
-                        </div>
+                        <>
+                            {opt.price === null ?
+                                null
+                                :
+                                <div key={opt.id} className="flex items-center justify-between">
+                                    <label className="flex-1 cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name={`shipping-${product?.id}`}
+                                            value={opt.id}
+                                            checked={selectedShippingId === opt.id}
+                                            onChange={() => handleSelect(opt.id)}
+                                            className="mr-2"
+                                        />
+                                        <span className="font-medium">{opt.name}</span>
+                                    </label>
+                                    <div className="text-right">
+                                        <p className="font-semibold">{fmt(opt.price)}</p>
+                                        <p className="text-xs text-gray-500">{opt.deliveryTime}</p>
+                                    </div>
+                                </div>
+                            }
+                        </>
                     ))}
                 </div>
             )}

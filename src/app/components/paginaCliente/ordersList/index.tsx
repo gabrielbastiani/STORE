@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useContext } from "react";
 import { setupAPIClient } from "@/services/api";
 import { toast } from "react-toastify";
 import {
@@ -9,6 +9,7 @@ import {
     ArrowLeft,
     Printer,
 } from "lucide-react";
+import { AuthContextStore } from "@/app/contexts/AuthContextStore";
 
 //
 // Tipagens
@@ -279,6 +280,8 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({
 // Componente principal: lista ou detalhes
 //
 export const OrdersList: React.FC = () => {
+
+    const { user } = useContext(AuthContextStore)
     
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
@@ -290,7 +293,7 @@ export const OrdersList: React.FC = () => {
         async function load() {
             try {
                 const api = setupAPIClient();
-                const { data } = await api.get<Order[]>("/customer/orders");
+                const { data } = await api.get<Order[]>(`/customer/orders?customer_id=${user?.id}`);
                 setOrders(data);
             } catch (err) {
                 console.error(err);

@@ -22,17 +22,24 @@ export default function ShippingOptions({ shippingOptions, selectedShippingId, s
                 {shippingOptions.map((s) => {
                     const prazo = s.deliveryTime ?? (s.estimated_days ? `${s.estimated_days} dias` : '—')
                     const label = s.name ?? `${s.provider ?? ''} — ${s.service ?? ''}`
+                    console.log(s.price)
                     return (
-                        <label key={s.id} className={`flex items-center justify-between gap-3 p-3 rounded border ${selectedShippingId === s.id ? 'border-orange-500 bg-orange-50' : 'border-gray-200'}`}>
-                            <div>
-                                <div className="font-medium">{label}</div>
-                                <div className="text-sm text-gray-600">Prazo estimado: {prazo}</div>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <div className="font-medium">{currency(s.price)}</div>
-                                <input name="shipping" type="radio" checked={selectedShippingId === s.id} onChange={() => setSelectedShippingId(s.id)} />
-                            </div>
-                        </label>
+                        <>
+                            {s.price === 0 ?
+                                null
+                                :
+                                <label key={s.id} className={`flex items-center justify-between gap-3 p-3 rounded border ${selectedShippingId === s.id ? 'border-orange-500 bg-orange-50' : 'border-gray-200'}`}>
+                                    <div>
+                                        <div className="font-medium">{label}</div>
+                                        <div className="text-sm text-gray-600">Prazo estimado: {prazo}</div>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <div className="font-medium">{currency(s.price)}</div>
+                                        <input name="shipping" type="radio" checked={selectedShippingId === s.id} onChange={() => setSelectedShippingId(s.id)} />
+                                    </div>
+                                </label>
+                            }
+                        </>
                     )
                 })}
             </div>
