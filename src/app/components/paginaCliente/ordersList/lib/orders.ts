@@ -32,11 +32,8 @@ export const paymentMethodLabel = (method?: string | null, payment?: ApiPayment 
     if (!method && payment?.method) method = payment.method;
     if (!method) return "NÃO INFORMADO";
     const m = method.toUpperCase();
-    if (m === "BOLETO") return "BOLETO";
-    if (m === "CREDIT_CARD" || m === "CARTAO" || m === "CARTÃO" || m === "CARTAO_DE_CREDITO")
-        return "CARTÃO DE CRÉDITO";
-    if (m === "PIX") return "PIX";
-    if (m === "BANK_TRANSFER" || m === "TRANSFER" || m === "TRANSFERENCIA")
-        return "TRANSFERÊNCIA";
+    if (m === "BOLETO") return "A VISTA";
+    if (m === "CREDIT_CARD") return "CARTÃO DE CRÉDITO";
+    if (m === "PIX") return "A VISTA";
     return m;
 };

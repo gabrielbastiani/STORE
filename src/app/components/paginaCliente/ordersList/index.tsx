@@ -91,13 +91,43 @@ const mapApiOrderToUI = (api: ApiOrder): Order => {
 };
 
 export const OrdersList: React.FC = () => {
-    
+
     const { user } = useContext(AuthContextStore);
 
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null); // para abrir detalhe completo
     const [expanded, setExpanded] = useState<Record<string, boolean>>({}); // quais pedidos estão abertos inline
+
+    // ===== status maps =====
+    const STATUS_STYLES: Record<string, string> = {
+        ENTREGUE: "bg-blue-700 text-white",
+        CANCELLED: "bg-red-500 text-white",
+        PENDING: "bg-orange-500 text-white",
+        PROCESSING: "bg-yellow-500 text-white",
+        PAID: "bg-green-500 text-white",
+        REFUNDED: "bg-pink-500 text-white",
+        FAILED: "bg-red-800 text-white",
+        OVERDUE: "bg-gray-500 text-white",
+        COMPLETED: "bg-lime-300 text-white",
+        REVERSED: "bg-rose-500 text-white",
+        RECEIVED: "bg-green-700 text-white",
+    };
+
+    const STATUS_LABELS: Record<string, string> = {
+        ENTREGUE: "ENTREGUE",
+        CANCELLED: "CANCELADO",
+        PENDING: "PENDENTE",
+        PROCESSING: "EM PROCESSAMENTO",
+        PAID: "PAGO",
+        REFUNDED: "ESTORNADO",
+        FAILED: "FALHOU",
+        OVERDUE: "ATRASADO",
+        COMPLETED: "COMPLETO",
+        REVERSED: "REVERSO",
+        RECEIVED: "RECEBIDO",
+    };
+    // =======================
 
     useEffect(() => {
         async function load() {
@@ -135,80 +165,85 @@ export const OrdersList: React.FC = () => {
 
     return (
         <div className="space-y-6 text-black">
-            {orders.map((order) => (
-                <div key={order.id} className="border rounded overflow-hidden relative">
-                    {/* bloco principal do pedido */}
-                    <div className="flex flex-col md:flex-row items-center">
-                        <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 md:grid-cols-5 gap-4 p-4">
-                            <div>
-                                <div className="text-xs uppercase font-medium border-b pb-1">Número do Pedido</div>
-                                <div className="mt-1 text-sm font-semibold">{order.id_order_store}</div>
-                                <div className="text-xs text-gray-500 mt-1">{order.date}</div>
+            {orders.map((order) => {
+                // calcula valores de status por pedido (tolerante a caixa e falsy)
+                const statusKey = (order?.status ?? "").toString().toUpperCase();
+                const statusClass = STATUS_STYLES[statusKey] ?? "bg-gray-200 text-gray-800";
+                const statusLabel = STATUS_LABELS[statusKey] ?? (statusKey || "DESCONHECIDO");
+
+                return (
+                    <div key={order.id} className="border rounded overflow-hidden relative">
+                        {/* bloco principal do pedido */}
+                        <div className="flex flex-col md:flex-row items-center">
+                            <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 md:grid-cols-5 gap-4 p-4">
+                                <div>
+                                    <div className="text-xs uppercase font-medium border-b pb-1">Número do Pedido</div>
+                                    <div className="mt-1 text-sm font-semibold">{order.id_order_store}</div>
+                                    <div className="text-xs text-gray-500 mt-1">{order.date}</div>
+                                </div>
+
+                                <div>
+                                    <div className="text-xs uppercase font-medium border-b pb-1">Forma de Pagamento</div>
+                                    <div className="mt-1 text-sm">{order.paymentMethod}</div>
+                                    <div className="text-xs text-gray-500 mt-1">{order.paymentLabel}</div>
+                                </div>
+
+                                <div>
+                                    <div className="text-xs uppercase font-medium border-b pb-1">Status do Pedido</div>
+                                    <div
+                                        className={`
+                        inline-block px-3 py-1 rounded-full text-xs font-semibold mt-1
+                        ${statusClass}
+                      `}
+                                    >
+                                        PED. {statusLabel}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div className="text-xs uppercase font-medium border-b pb-1">Valor Total</div>
+                                    <div className="mt-1 text-sm">{formatCurrency(order.total)}</div>
+                                    <div className="text-xs text-gray-500 mt-1">{order.installments ?? 1} x de {formatCurrency(order.total)}</div>
+                                </div>
+
+                                <div>
+                                    <div className="text-xs uppercase font-medium border-b pb-1">{order.storePickup ? "Retirada na Loja" : "Código de Rastreo"}</div>
+                                    <div className="mt-1 text-sm">{order.storePickup || order.trackingCode || "—"}</div>
+                                    <div className="text-xs text-gray-500 mt-1">{order.storePickup ? order.storePickup : order.trackingDays}</div>
+                                </div>
                             </div>
 
-                            <div>
-                                <div className="text-xs uppercase font-medium border-b pb-1">Forma de Pagamento</div>
-                                <div className="mt-1 text-sm">{order.paymentMethod}</div>
-                                <div className="text-xs text-gray-500 mt-1">{order.paymentLabel}</div>
-                            </div>
-
-                            <div>
-                                <div className="text-xs uppercase font-medium border-b pb-1">Status do Pedido</div>
+                            {/* coluna da seta vertical à direita — estilo similar ao exemplo */}
+                            <div className="flex items-stretch">
                                 <div
-                                    className={`
-                    inline-block px-3 py-1 rounded-full text-xs font-semibold mt-1
-                    ${order.status === "ENTREGUE" ? "bg-blue-900 text-white" : ""}
-                    ${order.status === "CANCELADO" ? "bg-red-500 text-white" : ""}
-                    ${order.status === "PROCESSANDO" ? "bg-yellow-500 text-white" : ""}
-                  `}
+                                    className={`w-12 flex items-center justify-center cursor-pointer ${expanded[order.id] ? "bg-blue-900 text-white" : "bg-blue-800 text-white"}`}
+                                    onClick={() => toggle(order.id)}
+                                    role="button"
+                                    aria-expanded={Boolean(expanded[order.id])}
+                                    aria-controls={`order-details-${order.id}`}
+                                    title={expanded[order.id] ? "Fechar detalhes" : "Abrir detalhes"}
                                 >
-                                    PED. {order.status === "ENTREGUE" ? "ENTREGUE" : order.status === "CANCELADO" ? "CANCELADO" : "PROCESSANDO"}
-                                </div>
-                            </div>
-
-                            <div>
-                                <div className="text-xs uppercase font-medium border-b pb-1">Valor Total</div>
-                                <div className="mt-1 text-sm">{formatCurrency(order.total)}</div>
-                                <div className="text-xs text-gray-500 mt-1">{order.installments ?? 1} x de {formatCurrency(order.total)}</div>
-                            </div>
-
-                            <div>
-                                <div className="text-xs uppercase font-medium border-b pb-1">{order.storePickup ? "Retirada na Loja" : "Código de Rastreo"}</div>
-                                <div className="mt-1 text-sm">{order.storePickup || order.trackingCode || "—"}</div>
-                                <div className="text-xs text-gray-500 mt-1">{order.storePickup ? order.storePickup : order.trackingDays}</div>
-                            </div>
-                        </div>
-
-                        {/* coluna da seta vertical à direita — estilo similar ao exemplo */}
-                        <div className="flex items-stretch">
-                            <div
-                                className={`w-12 flex items-center justify-center cursor-pointer ${expanded[order.id] ? "bg-blue-900 text-white" : "bg-blue-800 text-white"}`}
-                                onClick={() => toggle(order.id)}
-                                role="button"
-                                aria-expanded={Boolean(expanded[order.id])}
-                                aria-controls={`order-details-${order.id}`}
-                                title={expanded[order.id] ? "Fechar detalhes" : "Abrir detalhes"}
-                            >
-                                <div className="transform">
-                                    {/* ícone duplo similar ao exemplo: usamos ChevronUp duas vezes verticalmente */}
-                                    {expanded[order.id] ? (
-                                        <ChevronUp size={20} />
-                                    ) : (
-                                        <ChevronDown size={20} />
-                                    )}
+                                    <div className="transform">
+                                        {/* ícone duplo similar ao exemplo: usamos ChevronUp duas vezes verticalmente */}
+                                        {expanded[order.id] ? (
+                                            <ChevronUp size={20} />
+                                        ) : (
+                                            <ChevronDown size={20} />
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>
+
+                        {/* painel inline com detalhes — fica logo abaixo do bloco principal */}
+                        {expanded[order.id] && (
+                            <div id={`order-details-${order.id}`}>
+                                <InlineOrderDetails order={order} onViewFull={() => setSelectedOrder(order)} />
+                            </div>
+                        )}
                     </div>
-
-                    {/* painel inline com detalhes — fica logo abaixo do bloco principal */}
-                    {expanded[order.id] && (
-                        <div id={`order-details-${order.id}`}>
-                            <InlineOrderDetails order={order} onViewFull={() => setSelectedOrder(order)} />
-                        </div>
-                    )}
-                </div>
-            ))}
+                );
+            })}
         </div>
     );
 };
