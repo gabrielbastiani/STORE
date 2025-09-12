@@ -19,7 +19,6 @@ export const InlineOrderDetails: React.FC<InlineOrderDetailsProps> = ({ order, o
     shipping,
     totalIpi,
     total,
-    pickupAddress,
     paymentLabel,
     raw,
   } = order;
@@ -108,13 +107,11 @@ export const InlineOrderDetails: React.FC<InlineOrderDetailsProps> = ({ order, o
             <span className="font-medium">{formatCurrency(total ?? raw?.grandTotal)}</span>
           </div>
 
-          {/* Forma de pagamento */}
           <div className="mt-4 text-sm border-t pt-3">
             <div>Forma de pagamento: <strong>{paymentLabel ?? raw?.payment?.method ?? "—"}</strong></div>
             <div>Pagamento à vista</div>
           </div>
 
-          {/* Botão "Visualizar pedido completo" — abaixo do resumo, conforme solicitado */}
           <div className="mt-4">
             <button
               onClick={onViewFull}

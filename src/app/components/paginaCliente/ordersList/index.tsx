@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 import { useState, useEffect, useContext } from "react";
 import { setupAPIClient } from "@/services/api";
@@ -10,7 +10,10 @@ import OrderDetails from "./orderDetails";
 import InlineOrderDetails from "./InlineOrderDetails";
 import { buildImageUrl, formatDateBR, mapApiStatusToUi, paymentMethodLabel } from "./lib/orders";
 
-// mapApiOrderToUI (mantive aqui; se quiser mover pra lib, me avise)
+/**
+ * Mapeia um ApiOrder (raw) para o Order consumido pela UI.
+ * Observe: priorizamos api.payment?.status como fonte de verdade do status do pedido.
+ */
 const mapApiOrderToUI = (api: ApiOrder): Order => {
     const itemsApi: ApiOrderItem[] = api.items ?? [];
 
@@ -29,6 +32,9 @@ const mapApiOrderToUI = (api: ApiOrder): Order => {
         const unitPrice = Number(it.price ?? 0);
         const quantity = Number(it.quantity ?? 0);
 
+        // NOTE: item.status here we set based on payment status OR api.status to keep consistência.
+        const itemStatusNormalized = mapApiStatusToUi(api.payment?.status ?? api.status);
+
         return {
             id: it.id,
             image: buildImageUrl(image?.url ?? null),
@@ -37,7 +43,7 @@ const mapApiOrderToUI = (api: ApiOrder): Order => {
             quantity,
             unitPrice,
             totalPrice: +(unitPrice * quantity),
-            status: mapApiStatusToUi(api.status ?? undefined),
+            status: itemStatusNormalized,
             statusDate: formatDateBR(it.created_at ?? api.created_at ?? null),
             ipi: null,
             productId: it.product_id,
@@ -46,7 +52,7 @@ const mapApiOrderToUI = (api: ApiOrder): Order => {
     });
 
     const pickupAddress = {
-        recipient_name: undefined,
+        recipient_name: api.shippingAddress ?? undefined,
         street: api.shippingAddress ?? undefined,
         number: undefined,
         neighborhood: undefined,
@@ -69,13 +75,16 @@ const mapApiOrderToUI = (api: ApiOrder): Order => {
         installments = api.payment.installment_plan;
     }
 
+    // Prioriza status do payment se existir, senão usa api.status
+    const normalizedStatus = mapApiStatusToUi(api.payment?.status ?? api.status);
+
     return {
         id: api.id,
         id_order_store: api.id_order_store ?? undefined,
         date: formatDateBR(api.created_at ?? null),
         paymentMethod: api.payment?.method ?? undefined,
         paymentLabel: paymentMethodLabel(api.payment?.method ?? undefined, api.payment ?? null),
-        status: mapApiStatusToUi(api.status ?? undefined),
+        status: normalizedStatus, // status normalizado para UI
         total: Number(api.total ?? api.grandTotal ?? 0),
         installments,
         storePickup: undefined,
@@ -91,43 +100,45 @@ const mapApiOrderToUI = (api: ApiOrder): Order => {
 };
 
 export const OrdersList: React.FC = () => {
-
+    
     const { user } = useContext(AuthContextStore);
 
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
-    const [selectedOrder, setSelectedOrder] = useState<Order | null>(null); // para abrir detalhe completo
-    const [expanded, setExpanded] = useState<Record<string, boolean>>({}); // quais pedidos estão abertos inline
+    const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+    const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
-    // ===== status maps =====
+    console.log(orders)
+
+    // ===== status maps (keys devem ser os valores retornados por mapApiStatusToUi) =====
     const STATUS_STYLES: Record<string, string> = {
         ENTREGUE: "bg-blue-700 text-white",
-        CANCELLED: "bg-red-500 text-white",
-        PENDING: "bg-orange-500 text-white",
-        PROCESSING: "bg-yellow-500 text-white",
-        PAID: "bg-green-500 text-white",
-        REFUNDED: "bg-pink-500 text-white",
-        FAILED: "bg-red-800 text-white",
-        OVERDUE: "bg-gray-500 text-white",
-        COMPLETED: "bg-lime-300 text-white",
-        REVERSED: "bg-rose-500 text-white",
-        RECEIVED: "bg-green-700 text-white",
+        CANCELADO: "bg-red-500 text-white",
+        PROCESSANDO: "bg-yellow-500 text-white",
+        PENDENTE: "bg-orange-500 text-white",
+        PAGO: "bg-green-500 text-white",
+        ESTORNADO: "bg-pink-500 text-white",
+        FALHOU: "bg-red-800 text-white",
+        ATRASADO: "bg-gray-500 text-white",
+        COMPLETO: "bg-lime-300 text-black",
+        REVERSO: "bg-rose-500 text-white",
+        RECEBIDO: "bg-green-700 text-white",
     };
 
     const STATUS_LABELS: Record<string, string> = {
         ENTREGUE: "ENTREGUE",
-        CANCELLED: "CANCELADO",
-        PENDING: "PENDENTE",
-        PROCESSING: "EM PROCESSAMENTO",
-        PAID: "PAGO",
-        REFUNDED: "ESTORNADO",
-        FAILED: "FALHOU",
-        OVERDUE: "ATRASADO",
-        COMPLETED: "COMPLETO",
-        REVERSED: "REVERSO",
-        RECEIVED: "RECEBIDO",
+        CANCELADO: "CANCELADO",
+        PROCESSANDO: "EM PROCESSAMENTO",
+        PENDENTE: "PENDENTE",
+        PAGO: "PAGO",
+        ESTORNADO: "ESTORNADO",
+        FALHOU: "FALHOU",
+        ATRASADO: "ATRASADO",
+        COMPLETO: "COMPLETO",
+        REVERSO: "REVERSO",
+        RECEBIDO: "RECEBIDO",
     };
-    // =======================
+    // ================================================================================
 
     useEffect(() => {
         async function load() {
@@ -166,10 +177,11 @@ export const OrdersList: React.FC = () => {
     return (
         <div className="space-y-6 text-black">
             {orders.map((order) => {
-                // calcula valores de status por pedido (tolerante a caixa e falsy)
-                const statusKey = (order?.status ?? "").toString().toUpperCase();
-                const statusClass = STATUS_STYLES[statusKey] ?? "bg-gray-200 text-gray-800";
-                const statusLabel = STATUS_LABELS[statusKey] ?? (statusKey || "DESCONHECIDO");
+                // Display status: prioriza raw.payment.status -> raw.status -> order.status
+                const sourceStatus = order.raw?.payment?.status ?? order.raw?.status ?? order.status;
+                const displayStatusNormalized = mapApiStatusToUi(sourceStatus);
+                const statusClass = STATUS_STYLES[displayStatusNormalized] ?? "bg-gray-200 text-gray-800";
+                const statusLabel = STATUS_LABELS[displayStatusNormalized] ?? displayStatusNormalized ?? "DESCONHECIDO";
 
                 return (
                     <div key={order.id} className="border rounded overflow-hidden relative">
@@ -190,12 +202,7 @@ export const OrdersList: React.FC = () => {
 
                                 <div>
                                     <div className="text-xs uppercase font-medium border-b pb-1">Status do Pedido</div>
-                                    <div
-                                        className={`
-                        inline-block px-3 py-1 rounded-full text-xs font-semibold mt-1
-                        ${statusClass}
-                      `}
-                                    >
+                                    <div className={`inline-block px-3 py-1 rounded-full text-xs font-semibold mt-1 ${statusClass}`}>
                                         PED. {statusLabel}
                                     </div>
                                 </div>
@@ -213,7 +220,7 @@ export const OrdersList: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* coluna da seta vertical à direita — estilo similar ao exemplo */}
+                            {/* coluna da seta vertical à direita */}
                             <div className="flex items-stretch">
                                 <div
                                     className={`w-12 flex items-center justify-center cursor-pointer ${expanded[order.id] ? "bg-blue-900 text-white" : "bg-blue-800 text-white"}`}
@@ -223,13 +230,8 @@ export const OrdersList: React.FC = () => {
                                     aria-controls={`order-details-${order.id}`}
                                     title={expanded[order.id] ? "Fechar detalhes" : "Abrir detalhes"}
                                 >
-                                    <div className="transform">
-                                        {/* ícone duplo similar ao exemplo: usamos ChevronUp duas vezes verticalmente */}
-                                        {expanded[order.id] ? (
-                                            <ChevronUp size={20} />
-                                        ) : (
-                                            <ChevronDown size={20} />
-                                        )}
+                                    <div>
+                                        {expanded[order.id] ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                                     </div>
                                 </div>
                             </div>
