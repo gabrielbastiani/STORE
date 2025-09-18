@@ -154,6 +154,7 @@ export type ApiPayment = {
     customer?: ApiCustomer | null;
     order?: ApiOrder | null;
     discountAmount?: any;
+    value?: any;
 };
 
 export type ApiOrder = {
@@ -213,6 +214,7 @@ export type OrderItem = {
 };
 
 export type Order = {
+    payment?: any;
     id: string;
     id_order_store?: string | null;
     date?: string | null;

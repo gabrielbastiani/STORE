@@ -25,6 +25,7 @@ const DEFAULT_FILTERS: FilterState = {
 };
 
 export const OrdersList: React.FC = () => {
+    
     const { user } = React.useContext(AuthContextStore);
 
     const [orders, setOrders] = useState<Order[]>([]);

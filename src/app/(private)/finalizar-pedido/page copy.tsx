@@ -20,7 +20,7 @@ import OrderSummary from '@/app/components/checkout/OrderSummary'
 import AddressModal from '@/app/components/checkout/AddressModal'
 import DeleteConfirmModal from '@/app/components/checkout/DeleteConfirmModal'
 
-import { detectCardBrandFromNumber, formatCardNumberForDisplay, cvcLengthForBrand, generateInstallmentOptions, DEFAULT_MONTHLY_INTEREST } from '@/app/components/checkout/utils/paymentHelpers'
+import { detectCardBrandFromNumber, formatCardNumberForDisplay, cvcLengthForBrand, generateInstallmentOptions } from '@/app/components/checkout/utils/paymentHelpers'
 
 import type { AddressLocal, ShippingOption, PaymentOption } from '@/app/components/checkout/types'
 
@@ -38,6 +38,7 @@ function maskCep(v: string) {
 }
 
 export default function FinishOrderPage() {
+
     const router = useRouter()
     const { colors } = useTheme();
     const { user, isAuthenticated } = useContext(AuthContextStore)
@@ -550,23 +551,9 @@ export default function FinishOrderPage() {
                 }
             }
 
-            /**
-             * >>> IMPORTANTE: Construo e envio UM OBJETO `installment_plan`
-             * que o backend deve persistir no campo Payment.installment_plan (Json).
-             * Nunca salve aqui IDs de gateway (Asaas) no lugar de installments/value.
-             */
             if (isCard) {
                 const expMonth = String(cardExpMonth).padStart(2, '0')
                 const expYear = String(cardExpYear).length === 2 ? `20${cardExpYear}` : String(cardExpYear)
-
-                const perInstallment = selectedInstallmentObj?.perInstallment
-                    ?? Number((payableBase / (cardInstallments ?? 1)).toFixed(2))
-
-                const installmentPlan = {
-                    installments: Number(cardInstallments ?? 1),
-                    value: Number(perInstallment),
-                    juros: Number(DEFAULT_MONTHLY_INTEREST)
-                }
 
                 payload.card = {
                     number: cardNumber.replace(/\s+/g, ''),
@@ -576,8 +563,6 @@ export default function FinishOrderPage() {
                     cvv: cardCvv,
                     installments: cardInstallments ?? 1,
                     brand: currentBrand,
-                    installment_value: Number(perInstallment),
-                    installment_plan: installmentPlan, // <-- envio explícito para o backend gravar no campo Json do Payment
                 }
             }
 

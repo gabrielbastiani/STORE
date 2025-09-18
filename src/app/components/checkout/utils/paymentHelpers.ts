@@ -6,7 +6,7 @@ const NO_INTEREST_MAX_BY_BRAND: Record<string, number> = {
     visa: 12, mastercard: 12, amex: 6, elo: 6, hipercard: 6,
     diners: 6, discover: 6, jcb: 6, maestro: 6, aura: 6, unknown: 3
 }
-const DEFAULT_MONTHLY_INTEREST = 1.99
+export const DEFAULT_MONTHLY_INTEREST = 1.99
 
 export function currency(v: number) {
     return v?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) ?? 'R$ 0,00'
