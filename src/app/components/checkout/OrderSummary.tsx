@@ -1,9 +1,10 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect, useRef } from 'react'
 import Image from 'next/image'
-import type { CartItem, PromotionDetail } from './types'
+import type { CartItem, PromotionDetail, SkippedPromo } from './types'
 import { currency } from './utils/paymentHelpers'
+import { toast } from 'react-toastify'
 
 type Props = {
     cartItems?: CartItem[]
@@ -27,14 +28,31 @@ type Props = {
     API_URL: string
     totalWithInstallments: number
     validatingCoupon: boolean
+    skippedPromotions?: SkippedPromo[]
 }
 
 export default function OrderSummary({
     cartItems, itemsTotal, promotions, freeGifts, productDiscount, currentFrete, shippingDiscount,
     appliedCoupon, couponInput, setCouponInput, applyCoupon, removeCoupon, loadingPromo, promoError,
     placingOrder, handlePlaceOrder, cardInstallments, installmentOptions, API_URL, totalWithInstallments,
-    validatingCoupon
+    validatingCoupon, skippedPromotions = []
 }: Props) {
+
+    const lastSkippedJsonRef = useRef<string | null>(null)
+    useEffect(() => {
+        const json = JSON.stringify(skippedPromotions || [])
+        if (!json) return
+        if (json === lastSkippedJsonRef.current) return
+        lastSkippedJsonRef.current = json
+        if (skippedPromotions && skippedPromotions.length > 0) {
+            // build readable message
+            const msgs = skippedPromotions.map(s => s.reason).filter(Boolean)
+            const message = msgs.join('; ')
+            // show a single consolidated toast (you may change to multiple toasts if preferred)
+            toast.warn(`Algumas promoções foram omitidas: ${message}`, { autoClose: 8000 })
+        }
+    }, [skippedPromotions]);
+    
     return (
         <aside className="bg-white rounded-2xl shadow p-6">
             <h3 className="text-lg font-semibold">Resumo do pedido</h3>
@@ -77,6 +95,18 @@ export default function OrderSummary({
 
                 {loadingPromo && <div className="text-sm text-gray-500">Aplicando promoções…</div>}
                 {promoError && <div className="text-sm text-red-600">{promoError}</div>}
+
+                {/* ---------- bloco informativo para skippedPromotions ---------- */}
+                {skippedPromotions && skippedPromotions.length > 0 && (
+                    <div className="bg-yellow-50 border-l-4 border-yellow-300 p-3 rounded mt-2">
+                        <div className="font-medium text-sm text-yellow-800">Algumas promoções não foram aplicadas</div>
+                        <ul className="mt-1 text-xs text-yellow-700 list-disc list-inside">
+                            {skippedPromotions.map((s) => (
+                                <li key={s.id}>{s.reason}</li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
 
                 {promotions.length > 0 && (
                     <div className="bg-gray-50 p-2 rounded">

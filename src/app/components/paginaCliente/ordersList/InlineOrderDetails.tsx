@@ -21,9 +21,24 @@ export const InlineOrderDetails: React.FC<InlineOrderDetailsProps> = ({ order, o
     total,
     paymentLabel,
     raw,
-  } = order;
+    promotionsApplied,
+    promotionSummary,
+  } = order as any;
 
-  const subtotal = items.reduce((s, it) => s + (it.totalPrice ?? 0), 0);
+  const subtotal = items.reduce((s: any, it: { totalPrice: any; }) => s + (it.totalPrice ?? 0), 0);
+
+  // extrai shipping numeric original (raw.shippingCost) se disponível
+  const originalShippingNumber = typeof raw?.shippingCost === "number" ? raw.shippingCost : null;
+
+  // valor efetivo do frete após promoção = originalShippingNumber - (qualquer shippingDiscount do promotionSummary)
+  const shippingDiscountFromPromotions = promotionSummary?.breakdown?.reduce?.((acc: number, p: any) => {
+    return acc + (p.breakdown?.shippingDiscount ?? 0);
+  }, 0) ?? 0;
+
+  const effectiveShipping = (originalShippingNumber ?? 0) - (shippingDiscountFromPromotions ?? 0);
+
+  // total de descontos (se veio do backend)
+  const totalDiscount = promotionSummary?.discountTotal ?? discount ?? 0;
 
   return (
     <div className="border-t bg-white p-6">
@@ -66,9 +81,9 @@ export const InlineOrderDetails: React.FC<InlineOrderDetailsProps> = ({ order, o
                   <td className="py-3 text-xs">
                     <div>{it.status ?? "—"}</div>
                     <div className="text-gray-400">{it.statusDate ?? ""}</div>
-                    {typeof it.ipi === "number" && (
+                    {/* {typeof it.ipi === "number" && (
                       <div className="text-gray-500 mt-1">Valor de IPI: {formatCurrency(it.ipi)}</div>
-                    )}
+                    )} */}
                   </td>
                 </tr>
               ))}
@@ -83,33 +98,84 @@ export const InlineOrderDetails: React.FC<InlineOrderDetailsProps> = ({ order, o
             <span className="font-medium">{formatCurrency(subtotal)}</span>
           </div>
 
-          {typeof discount === "number" && (
-            <div className="flex justify-between text-red-600">
-              <span>Desconto Forma Pagamento:</span>
-              <span className="font-medium">{formatCurrency(discount)}</span>
+          {/* Se houver promoções aplicadas, listá-las */}
+          {Array.isArray(promotionsApplied) && promotionsApplied.length > 0 && (
+            <div className="mt-2 border p-3 rounded bg-gray-50">
+              <div className="text-sm font-semibold mb-2">Promoções aplicadas</div>
+              {promotionsApplied.map((p: any) => (
+                <div key={p.id} className="mb-2">
+                  <div className="flex justify-between">
+                    {/* AQUI: prioriza titlePromotion vindo de promotionUsages */}
+                    <div className="text-sm font-medium">
+                      {p?.rawUsage?.titlePromotion ?? p?.titlePromotion ?? p?.promotion?.titlePromotion ?? p?.name ?? "Promoção"}
+                    </div>
+                    <div className="text-sm font-medium">{formatCurrency(p.computed?.discountTotal ?? 0)}</div>
+                  </div>
+
+                  {/* breakdown por item */}
+                  {Array.isArray(p.computed?.breakdown?.items) && p.computed.breakdown.items.length > 0 && (
+                    <ul className="text-xs text-gray-600 mt-1 ml-2 list-disc list-inside">
+                      {p.computed.breakdown.items.map((b: any, idx: number) => (
+                        <li key={idx}>
+                          {b.label} — <strong>{formatCurrency(b.amount)}</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {/* frete grátis / desconto frete */}
+                  {p.computed?.breakdown?.shippingDiscount > 0 && (
+                    <div className="text-xs text-gray-600 mt-1 ml-2">Desconto no frete: {formatCurrency(p.computed.breakdown.shippingDiscount)}</div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
 
-          <div className="flex justify-between text-green-600">
-            <span>Valor do Frete:</span>
-            <span className="font-medium">{shipping ?? "—"}</span>
-          </div>
+          {/* valor de desconto total em destaque */}
+          {totalDiscount > 0 && (
+            <div className="flex justify-between text-red-600">
+              <span>Desconto(s) aplicado(s):</span>
+              <span className="font-medium">- {formatCurrency(totalDiscount)}</span>
+            </div>
+          )}
 
-          {typeof totalIpi === "number" && (
+          {/* Frete - mostrar original e efetivo caso tenha redução */}
+          {originalShippingNumber !== null ? (
+            <div className="flex justify-between text-green-600">
+              <span>Valor do Frete:</span>
+              <div className="text-right">
+                {shippingDiscountFromPromotions > 0 ? (
+                  <>
+                    <div className="text-xs line-through text-gray-400">{formatCurrency(originalShippingNumber)}</div>
+                    <div className="font-medium">{formatCurrency(effectiveShipping)}</div>
+                  </>
+                ) : (
+                  <div className="font-medium">{formatCurrency(originalShippingNumber)}</div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="flex justify-between text-green-600">
+              <span>Valor do Frete:</span>
+              <span className="font-medium">{shipping ?? "—"}</span>
+            </div>
+          )}
+
+          {/* {typeof totalIpi === "number" && (
             <div className="flex justify-between">
               <span>Valor Total das Alíquotas:</span>
               <span className="font-medium">{formatCurrency(totalIpi)}</span>
             </div>
-          )}
+          )} */}
 
           <div className="flex justify-between font-semibold border-t pt-2">
             <span>TOTAL DO PEDIDO:</span>
-            <span className="font-medium">{formatCurrency(total ?? raw?.grandTotal)}</span>
+            <span className="font-medium">{formatCurrency(raw?.grandTotal)}</span>
           </div>
 
           <div className="mt-4 text-sm border-t pt-3">
             <div>Forma de pagamento: <strong>{paymentLabel ?? raw?.payment?.method ?? "—"}</strong></div>
-            <div>Pagamento à vista</div>
           </div>
 
           <div className="mt-4">

@@ -1,9 +1,12 @@
-"use client"
+"use client";
 
-import React from "react";
+import React, { useContext } from "react";
 import { Printer, ArrowLeft } from "lucide-react";
 import type { Order, OrderItem as OrderItemType, ApiPayment } from "../types/orders";
 import { buildImageUrl, formatDateBR, mapApiStatusToUi, paymentMethodLabel } from "../lib/orders";
+import { AuthContextStore } from "@/app/contexts/AuthContextStore";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 type OrderDetailsProps = Order & {
     onBack: () => void;
@@ -12,7 +15,6 @@ type OrderDetailsProps = Order & {
 const formatCurrency = (v: number | undefined | null) =>
     Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-/** Mapa de arquivos das bandeiras em /public/card-brands/ */
 const CARD_BRAND_MAP: Record<string, string> = {
     VISA: "visa.png",
     MASTERCARD: "mastercard.png",
@@ -40,17 +42,14 @@ const maskCardNumber = (num?: string | null) => {
     return `**** **** **** ${last4}`;
 };
 
-/** Retorna o payload do webhook (se existir) de forma tolerante */
 const getAsaasWebhookPayload = (payment?: ApiPayment | null) => {
     return payment?.gateway_response?.asaas_webhook_payload ?? payment?.gateway_response?.raw?.asaas_webhook_payload ?? null;
 };
 
-/** Retorna raw gateway (tolerante) */
 const getGwRaw = (payment?: ApiPayment | null) => {
     return payment?.gateway_response?.raw ?? payment?.gateway_response ?? null;
 };
 
-/** Retorna status traduzido (prioridade: asaas_webhook_payload.status > gwRaw.status > payment.status > fallback) */
 const getPaymentStatusLabel = (payment?: ApiPayment | null) => {
     const webhook = getAsaasWebhookPayload(payment);
     const gwRaw = getGwRaw(payment);
@@ -58,8 +57,92 @@ const getPaymentStatusLabel = (payment?: ApiPayment | null) => {
     return mapApiStatusToUi(rawStatus ?? undefined);
 };
 
+/* CSS de impressão movido para constante para evitar confusão do parser */
+const PRINT_CSS = `
+@page {
+  size: A4 portrait;
+  margin: 10mm;
+}
+
+/* Print styles */
+@media print {
+  /* hide everything... */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* ...except the printable area */
+  .printable-order, .printable-order * {
+    visibility: visible !important;
+  }
+
+  /* position the printable area at the top-left and size to A4 */
+  .printable-order {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 210mm !important;
+    height: 297mm !important;
+    padding: 12mm !important;
+    box-sizing: border-box !important;
+    background: white !important;
+    color: #000 !important;
+  }
+
+  /* hide controls */
+  .no-print {
+    display: none !important;
+  }
+
+  /* print-only header (shown only on print) */
+  .print-only { display: block !important; }
+
+  /* table formatting */
+  .printable-order table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 12pt !important;
+  }
+  .printable-order th, .printable-order td {
+    border: 1px solid #222 !important;
+    padding: 6px !important;
+    vertical-align: top !important;
+  }
+
+  /* images sizing for print */
+  .printable-order img {
+    max-width: 40mm !important;
+    max-height: 40mm !important;
+    object-fit: contain !important;
+  }
+
+  /* avoid breaking rows across pages */
+  tr, thead, tbody {
+    page-break-inside: avoid !important;
+  }
+
+  /* allow page break between main sections */
+  .page-break { page-break-after: always; }
+
+  /* make headings slightly larger */
+  .printable-order h1 { font-size: 18pt !important; margin-bottom: 8px !important; }
+  .printable-order h2 { font-size: 14pt !important; margin-bottom: 6px !important; }
+
+  /* reduce margins/paddings that could overflow */
+  .printable-order .p-4 { padding: 6px !important; }
+  .printable-order .p-3 { padding: 6px !important; }
+  .printable-order .space-y-1 > * + * { margin-top: 4px !important; }
+  .printable-order .space-y-2 > * + * { margin-top: 6px !important; }
+}
+
+/* hide print-only UI on screen */
+.print-only { display: none; }
+`;
+
 export const OrderDetails: React.FC<OrderDetailsProps> = ({ onBack, ...order }) => {
     if (!order) return <p>Pedido não encontrado.</p>;
+
+    const { configs } = useContext(AuthContextStore);
 
     const {
         id_order_store,
@@ -79,14 +162,11 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ onBack, ...order }) 
 
     const payment: ApiPayment | null | undefined = raw?.payment ?? null;
 
-    // extrai dados úteis
     const webhook = getAsaasWebhookPayload(payment);
     const gwRaw = getGwRaw(payment);
 
-    // status do pagamento traduzido (usa webhook quando possível)
     const paymentStatusLabel = getPaymentStatusLabel(payment);
 
-    // credit card info (tenta extrair de gwRaw.raw.creditCard ou gwRaw.creditCard)
     const creditCardBrand =
         gwRaw?.creditCard?.creditCardBrand ??
         gwRaw?.raw?.creditCard?.creditCardBrand ??
@@ -99,19 +179,16 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ onBack, ...order }) 
         gwRaw?.creditCardNumber ??
         null;
 
-    // installment number (gw payload)
     const installmentNumber =
         webhook?.installmentNumber ??
         gwRaw?.installmentNumber ??
         gwRaw?.raw?.installmentNumber ??
         null;
 
-    // boleto fields
     const boletoBarcode = payment?.boleto_barcode ?? gwRaw?.boleto_barcode ?? gwRaw?.raw?.boleto_barcode ?? null;
     const boletoUrl = payment?.boleto_url ?? gwRaw?.invoiceUrl ?? gwRaw?.raw?.invoiceUrl ?? null;
     const bankSlipUrl = gwRaw?.bankSlipUrl ?? gwRaw?.raw?.bankSlipUrl ?? null;
 
-    // pix
     const pixQrCode = payment?.pix_qr_code ?? gwRaw?.pix_qr_code ?? gwRaw?.raw?.pix_qr_code ?? null;
     const pixExpiration = payment?.pix_expiration ?? gwRaw?.pix_expiration ?? gwRaw?.raw?.pix_expiration ?? null;
     const pixImage =
@@ -120,12 +197,35 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ onBack, ...order }) 
         gwRaw?.raw?.pix_qr_image ??
         null;
 
-    // receipt
     const transactionReceiptUrl =
         gwRaw?.transactionReceiptUrl ?? gwRaw?.raw?.transactionReceiptUrl ?? null;
 
     return (
-        <div className="space-y-6 text-black mx-auto p-4">
+        <div className="printable-order space-y-6 text-black mx-auto p-4 bg-white">
+            {/* injeta CSS de impressão */}
+            <style dangerouslySetInnerHTML={{ __html: PRINT_CSS }} />
+
+            {/* optional print-only header (company info, visible only on printed page) */}
+            <div className="print-only mb-2">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <div>
+                        {/* Se tiver logo público, substitua /logo.png */}
+                        {configs?.logo ? (
+                            // cria a URL completa apenas se configs.logo estiver disponível
+                            <img src={`${API_URL}/files/${configs.logo}`} alt="Logo" style={{ height: 36, objectFit: "contain" }} />
+                        ) : (
+                            <img src="/logo.png" alt="Logo" style={{ height: 36, objectFit: "contain" }} />
+                        )}
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                        <div style={{ fontWeight: 700 }}>{configs?.name ?? "Nome da Loja"}</div>
+                        <div style={{ fontSize: 12 }}>CNPJ/CPF: {configs?.cnpj || configs?.cpf}</div>
+                        <div style={{ fontSize: 12 }}>Telefone: {configs?.phone ?? "—"}</div>
+                    </div>
+                </div>
+                <hr />
+            </div>
+
             <h1 className="text-2xl font-bold">Detalhes do Pedido</h1>
 
             {/* Dados do Pedido + Endereço */}
@@ -154,7 +254,6 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ onBack, ...order }) 
                     </div>
 
                     <div className="text-sm space-y-1">
-                        {/* status do pedido (ainda pode usar orderStatus) */}
                         <div>
                             Status do Pedido: <span className="font-medium">{mapApiStatusToUi(orderStatus ?? raw?.status ?? undefined)}</span>
                         </div>
@@ -169,21 +268,16 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ onBack, ...order }) 
                         </div>
                     </div>
 
-                    {/* Informações de Pagamento (refinado por método) */}
                     {payment && (
-                        <div className="mt-3 text-sm p-3 bg-yellow-50 border rounded">
+                        /* Mantém visible na tela, mas oculta na impressão */
+                        <div className="mt-3 text-sm p-3 bg-yellow-50 border rounded no-print">
                             <div className="font-semibold mb-2">Informações de Pagamento</div>
 
-                            {/* ID do pagamento */}
                             <div>ID do pagamento: <strong>{payment.id ?? "—"}</strong></div>
-
-                            {/* Método / Valor / Status (status traduzido vindo do webhook se existir) */}
                             <div>Método: <strong>{paymentMethodLabel(payment.method ?? undefined)}</strong></div>
                             <div>Valor: <strong>{formatCurrency(payment.amount)}</strong></div>
                             <div>Status: <strong>{paymentStatusLabel}</strong></div>
 
-                            {/* Exibe campos específicos por método */}
-                            {/* CARTÃO */}
                             {payment.method?.toUpperCase?.() === "CREDIT_CARD" && (
                                 <div className="mt-3 space-y-2">
                                     <div>Parcelado: <strong>{installmentNumber ?? (payment.installment_plan ?? "—")}</strong></div>
@@ -204,7 +298,6 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ onBack, ...order }) 
                                 </div>
                             )}
 
-                            {/* BOLETO */}
                             {payment.method?.toUpperCase?.() === "BOLETO" && (
                                 <div className="mt-3 space-y-2">
                                     <div>
@@ -219,7 +312,6 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ onBack, ...order }) 
                                         </div>
                                     )}
 
-                                    {/* invoiceNumber / confirmedDate úteis */}
                                     {gwRaw?.invoiceNumber ?? gwRaw?.raw?.invoiceNumber ? (
                                         <div className="text-xs text-gray-600">
                                             Invoice: {gwRaw?.invoiceNumber ?? gwRaw?.raw?.invoiceNumber} — Pago em: {formatDateBR(gwRaw?.raw?.paymentDate ?? gwRaw?.raw?.confirmedDate ?? gwRaw?.confirmedDate ?? null) || "—"}
@@ -228,7 +320,6 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ onBack, ...order }) 
                                 </div>
                             )}
 
-                            {/* PIX */}
                             {payment.method?.toUpperCase?.() === "PIX" && (
                                 <div className="mt-3 space-y-2">
                                     <div>Chave/Código PIX: <strong>{pixQrCode ?? "—"}</strong></div>
@@ -236,7 +327,6 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ onBack, ...order }) 
 
                                     {pixImage ? (
                                         <div className="mt-2">
-                                            {/* aceita base64 puro ou já com data: header */}
                                             <img
                                                 src={pixImage.startsWith("data:") ? pixImage : `data:image/png;base64,${pixImage}`}
                                                 alt="QR Code PIX"
@@ -249,7 +339,6 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ onBack, ...order }) 
                                 </div>
                             )}
 
-                            {/* Links úteis / resumo do gateway (somente campos relevantes) */}
                             <div className="mt-3 text-xs text-gray-700 space-y-1">
                                 {gwRaw?.raw?.transactionReceiptUrl || gwRaw?.transactionReceiptUrl ? (
                                     <div>Receipt: <a href={gwRaw?.raw?.transactionReceiptUrl ?? gwRaw?.transactionReceiptUrl} target="_blank" rel="noreferrer" className="underline text-blue-600">Abrir recibo</a></div>
@@ -286,7 +375,10 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ onBack, ...order }) 
 
             {/* Produtos */}
             <div className="border rounded overflow-hidden">
-                <div className="p-4 border-b flex items-center"><h3 className="font-semibold">Produtos Adquiridos</h3></div>
+                <div className="p-4 border-b flex items-center">
+                    <h3 className="font-semibold">Produtos Adquiridos</h3>
+                </div>
+
                 <table className="w-full text-sm">
                     <thead>
                         <tr className="border-b">
@@ -329,10 +421,18 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ onBack, ...order }) 
                 </div>
             </div>
 
-            {/* Ações */}
-            <div className="flex justify-between">
-                <button onClick={onBack} className="flex items-center bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"><ArrowLeft className="mr-2" size={16} /> Voltar</button>
-                <button onClick={() => window.print()} className="flex items-center bg-blue-900 text-white px-4 py-2 rounded hover:bg-blue-700"><Printer className="mr-2" size={16} /> Imprimir</button>
+            {/* Ações (escondidas na impressão) */}
+            <div className="flex justify-between no-print">
+                <button onClick={onBack} className="flex items-center bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+                    <ArrowLeft className="mr-2" size={16} /> Voltar
+                </button>
+
+                <button
+                    onClick={() => window.print()}
+                    className="flex items-center bg-blue-900 text-white px-4 py-2 rounded hover:bg-blue-700"
+                >
+                    <Printer className="mr-2" size={16} /> Imprimir
+                </button>
             </div>
         </div>
     );

@@ -60,3 +60,5 @@ export type PromotionDetail = {
   type?: 'shipping' | 'product' | string;
   discount?: number;
 }
+
+export type SkippedPromo = any

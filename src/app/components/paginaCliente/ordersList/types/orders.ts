@@ -153,9 +153,13 @@ export type ApiPayment = {
     updated_at?: string | null;
     customer?: ApiCustomer | null;
     order?: ApiOrder | null;
+    discountAmount?: any;
 };
 
 export type ApiOrder = {
+    promotionsApplied: any[];
+    promotionSummary: any;
+    address: any;
     id: string;
     id_order_store?: string | null;
     total: number;
@@ -226,4 +230,16 @@ export type Order = {
     totalIpi?: number | null;
     pickupAddress: Address;
     raw?: ApiOrder;
+    promotionsApplied?: any;
+    promotionSummary?: any;
+};
+
+export type FilterState = {
+    q: string;
+    sku: string;
+    paymentMethod: string;
+    status: string;
+    orderNumber: string;
+    dateFrom: string;
+    dateTo: string;
 };

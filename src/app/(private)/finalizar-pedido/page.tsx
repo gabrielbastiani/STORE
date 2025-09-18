@@ -110,17 +110,30 @@ export default function FinishOrderPage() {
 
     const {
         discountTotal,
+        productDiscount: productDiscountFromService,
+        shippingDiscount: shippingDiscountFromService,
         promotions,
+        skippedPromotions, // <-- novo
         loading: loadingPromo,
         error: promoError,
         freeGifts,
-    } = usePromotions(cepFromSelectedAddress ?? '', appliedCoupon, currentFrete, user?.id ?? null)
+    } = usePromotions(cepFromSelectedAddress ?? '', appliedCoupon, currentFrete, user?.id ?? null);
 
-    const shippingDiscount = promotions?.filter((p) => p.type === 'shipping').reduce((s, p) => s + (p.discount ?? 0), 0) ?? 0
-    const productDiscount = (discountTotal ?? 0) - shippingDiscount
+    // use service-provided values when present; fall back to calculation from promotions[] only if missing
+    const shippingDiscountRaw = typeof shippingDiscountFromService === 'number'
+        ? shippingDiscountFromService
+        : (promotions?.filter((p) => p.type === 'shipping').reduce((s, p) => s + (p.discount ?? 0), 0) ?? 0)
 
-    // base payable (sem considerar juros de parcelas)
-    const payableBase = (itemsTotal ?? 0) - (productDiscount ?? 0) + (currentFrete - (shippingDiscount ?? 0))
+    const productDiscountRaw = typeof productDiscountFromService === 'number'
+        ? productDiscountFromService
+        : ((discountTotal ?? 0) - shippingDiscountRaw)
+
+    // round to 2 decimals to avoid floating point drift
+    const shippingDiscount = Number((shippingDiscountRaw || 0).toFixed(2))
+    const productDiscount = Number((productDiscountRaw || 0).toFixed(2))
+
+    // base payable (sem considerar juros de parcelas) — arredondado
+    const payableBase = Number(((itemsTotal ?? 0) - productDiscount + (currentFrete ?? 0) - shippingDiscount).toFixed(2))
 
     // installment options (dependem da bandeira detectada)
     const currentBrand = detectedBrand ?? 'unknown'
@@ -148,9 +161,10 @@ export default function FinishOrderPage() {
                 price: it.price ?? 0,
                 variant_id: it.variant_id ?? null,
             })),
+            // prefer explicit baseTotal passed by caller (ex: itemsTotal variable)
             subtotal: typeof cartObj?.subtotal === 'number' ? cartObj.subtotal : baseTotal ?? 0,
             shippingCost: typeof shippingCostOverride === 'number' ? shippingCostOverride : (typeof cartObj?.shippingCost === 'number' ? cartObj.shippingCost : 0),
-            total: totalWithInstallments,
+            total: overrideTotal ?? totalWithInstallments,
         }
     }
 
@@ -196,7 +210,7 @@ export default function FinishOrderPage() {
 
                 try {
                     if (isAuthenticated && user) {
-                        const payload = mapCartToPayload(cart, user, payableBase)
+                        const payload = mapCartToPayload(cart, user, itemsTotal)
                         if (payload.cart_id && payload.items && payload.items.length > 0) {
                             if (syncTimerRef.current) {
                                 window.clearTimeout(syncTimerRef.current)
@@ -220,7 +234,7 @@ export default function FinishOrderPage() {
         if (!isAuthenticated || !user) return
         const shippingCostToSend = currentFrete ?? 0
         if (!cart?.items || cart.items.length === 0) return
-        const payload = mapCartToPayload(cart, user, payableBase, totalWithInstallments, shippingCostToSend)
+        const payload = mapCartToPayload(cart, user, itemsTotal, totalWithInstallments, shippingCostToSend)
         if (syncTimerRef.current) {
             window.clearTimeout(syncTimerRef.current)
         }
@@ -240,7 +254,7 @@ export default function FinishOrderPage() {
             window.clearTimeout(syncTimerRef.current)
         }
         syncTimerRef.current = window.setTimeout(() => {
-            const payload = mapCartToPayload(cart, user, payableBase)
+            const payload = mapCartToPayload(cart, user, itemsTotal)
             sendAbandonedViaClient(payload).catch(e => console.warn('Erro ao enviar abandoned (items change):', e))
             syncTimerRef.current = null
         }, 300)
@@ -252,7 +266,7 @@ export default function FinishOrderPage() {
         if (!isAuthenticated || !user) return
 
         const handleSendOnExit = () => {
-            const payload = mapCartToPayload(latestCartRef.current, latestUserRef.current, payableBase, totalWithInstallments)
+            const payload = mapCartToPayload(latestCartRef.current, latestUserRef.current, itemsTotal, totalWithInstallments)
             if (!payload || !payload.items || payload.items.length === 0) return
 
             const url = `${API_URL}/cart/abandoned`
@@ -424,148 +438,170 @@ export default function FinishOrderPage() {
     function onCvvChange(v: string) { const max = cvcLengthForBrand(currentBrand); setCardCvv(v.replace(/\D/g, '').slice(0, max)) }
 
     async function handlePlaceOrder() {
-    if (!cart?.items || cart.items.length === 0) {
-        toast.error('Carrinho vazio.')
-        return
-    }
-    if (!selectedShippingId) {
-        toast.error('Escolha uma opção de envio.')
-        return
-    }
-    if (!selectedPaymentId) {
-        toast.error('Escolha uma forma de pagamento.')
-        return
-    }
-
-    const isCard = String(selectedPaymentId).toLowerCase().includes('card')
-    if (isCard) {
-        const plainNumber = cardNumber.replace(/\s+/g, '')
-        if (!plainNumber || !cardHolder || !cardExpMonth || !cardExpYear || !cardCvv) {
-            toast.error('Preencha todos os dados do cartão para prosseguir.')
+        if (!cart?.items || cart.items.length === 0) {
+            toast.error('Carrinho vazio.')
             return
         }
-        if (!/^\d{13,19}$/.test(plainNumber)) {
-            toast.error('Número de cartão inválido.')
+        if (!selectedShippingId) {
+            toast.error('Escolha uma opção de envio.')
             return
         }
-        if (!/^\d{2}$/.test(String(cardExpMonth)) || !/^\d{4}$/.test(String(cardExpYear))) {
-            toast.error('Validade do cartão inválida (MM / YYYY).')
+        if (!selectedPaymentId) {
+            toast.error('Escolha uma forma de pagamento.')
             return
         }
-        const cvcLen = cvcLengthForBrand(currentBrand)
-        if (!new RegExp(`^\\d{${cvcLen}}$`).test(cardCvv)) {
-            toast.error(`CVV inválido para a bandeira detectada (deve ter ${cvcLen} dígitos).`)
-            return
-        }
-    }
 
-    setPlacingOrder(true)
-    try {
-        const itemsForApi = (cart.items || []).map((it: CartItemType) => ({
-            product_id: it.product_id,
-            price: it.price,
-            quantity: it.quantity,
-            weight: it.weight ?? 0.1,
-            length: it.length ?? 10,
-            height: it.height ?? 2,
-            width: it.width ?? 10,
-            variant_id: it.variant_id ?? undefined,
-        }))
-
-        const selectedShipping = shippingOptions.find(s => s.id === selectedShippingId)
-        const shippingLabel = selectedShipping?.name ?? (selectedShipping ? `${selectedShipping.provider ?? ''} — ${selectedShipping.service ?? ''}` : undefined)
-
-        let promotion_id: string[] | undefined = undefined
-        if (Array.isArray(promotions) && promotions.length > 0) {
-            const ids = promotions
-                .map((p: any) => (typeof p === 'string' ? p : p?.id))
-                .filter((x: any) => typeof x === 'string' && x.length > 0)
-            promotion_id = ids.length > 0 ? ids : undefined
-        } else {
-            promotion_id = undefined
-        }
-        // ------------------------------------------------
-
-        let payload: any = {
-            cartId: cart?.id ?? null,
-            shippingId: selectedShippingId,
-            shippingLabel: shippingLabel,
-            paymentId: selectedPaymentId,
-            items: itemsForApi,
-            customerNote: '',
-            couponCode: appliedCoupon ?? undefined,
-            shippingCost: currentFrete,
-            shippingRaw: selectedShipping?.raw ?? selectedShipping ?? null,
-            orderTotalOverride: totalWithInstallments,
-            promotion_id: promotion_id
-        }
-
-        if (isAuthenticated) {
-            payload.addressId = selectedAddressId
-        } else {
-            if (selectedAddressId?.startsWith('guest-')) {
-                const localAddress = addresses.find((a) => a.id === selectedAddressId)
-                if (!localAddress) throw new Error('Endereço inválido')
-                payload.address = {
-                    street: localAddress.street,
-                    number: localAddress.number,
-                    neighborhood: localAddress.neighborhood,
-                    city: localAddress.city,
-                    state: localAddress.state,
-                    zipCode: localAddress.zipCode?.replace(/\D/g, ''),
-                    country: localAddress.country,
-                    complement: localAddress.complement,
-                    reference: localAddress.reference,
-                }
-            } else {
-                if (selectedAddressId) payload.addressId = selectedAddressId
-            }
-        }
-
+        const isCard = String(selectedPaymentId).toLowerCase().includes('card')
         if (isCard) {
-            const expMonth = String(cardExpMonth).padStart(2, '0')
-            const expYear = String(cardExpYear).length === 2 ? `20${cardExpYear}` : String(cardExpYear)
-
-            payload.card = {
-                number: cardNumber.replace(/\s+/g, ''),
-                holderName: cardHolder.trim(),
-                expirationMonth: expMonth,
-                expirationYear: expYear,
-                cvv: cardCvv,
-                installments: cardInstallments ?? 1,
-                brand: currentBrand,
+            const plainNumber = cardNumber.replace(/\s+/g, '')
+            if (!plainNumber || !cardHolder || !cardExpMonth || !cardExpYear || !cardCvv) {
+                toast.error('Preencha todos os dados do cartão para prosseguir.')
+                return
+            }
+            if (!/^\d{13,19}$/.test(plainNumber)) {
+                toast.error('Número de cartão inválido.')
+                return
+            }
+            if (!/^\d{2}$/.test(String(cardExpMonth)) || !/^\d{4}$/.test(String(cardExpYear))) {
+                toast.error('Validade do cartão inválida (MM / YYYY).')
+                return
+            }
+            const cvcLen = cvcLengthForBrand(currentBrand)
+            if (!new RegExp(`^\\d{${cvcLen}}$`).test(cardCvv)) {
+                toast.error(`CVV inválido para a bandeira detectada (deve ter ${cvcLen} dígitos).`)
+                return
             }
         }
 
-        const resp = await api.post('/checkout/order', payload)
-        const data = resp.data ?? {}
+        setPlacingOrder(true)
 
         try {
-            const lastOrderObj = {
-                orderId: data.orderId ?? null,
-                orderTotal: totalWithInstallments,
-                shippingCost: currentFrete,
-                shippingAddress: selectedAddress ?? null,
-                paymentData: data.paymentData ?? null,
-                paymentMethod: selectedPaymentId ?? null,
-                shippingLabel: shippingLabel ?? null,
-                shippingRaw: selectedShipping?.raw ?? selectedShipping ?? null,
-                createdAt: new Date().toISOString(),
-            }
-            sessionStorage.setItem(`lastOrder:${String(data.orderId ?? '')}`, JSON.stringify(lastOrderObj))
-        } catch (e) {
-            console.warn('Não foi possível salvar lastOrder no sessionStorage', e)
-        }
+            const itemsForApi = (cart.items || []).map((it: CartItemType) => ({
+                product_id: it.product_id,
+                price: it.price,
+                quantity: it.quantity,
+                weight: it.weight ?? 0.1,
+                length: it.length ?? 10,
+                height: it.height ?? 2,
+                width: it.width ?? 10,
+                variant_id: it.variant_id ?? undefined,
+            }))
 
-        clearCart()
-        router.push(`/order/success/${data.orderId}`)
-    } catch (err: any) {
-        console.error('Erro ao finalizar pedido', err)
-        toast.error(err?.response?.data?.message ?? err?.message ?? 'Não foi possível finalizar o pedido.')
-    } finally {
-        setPlacingOrder(false)
+            const selectedShipping = shippingOptions.find(s => s.id === selectedShippingId)
+            const shippingLabel = selectedShipping?.name ?? (selectedShipping ? `${selectedShipping.provider ?? ''} — ${selectedShipping.service ?? ''}` : undefined)
+
+            let promotion_id: string[] | undefined = undefined;
+            if (Array.isArray(promotions) && promotions.length > 0) {
+                const ids = promotions
+                    .map((p: any) => (typeof p === 'string' ? p : p?.id))
+                    .filter((x: any) => typeof x === 'string' && x.length > 0);
+                promotion_id = ids.length > 0 ? ids : undefined;
+            } else {
+                promotion_id = undefined;
+            }
+
+            let promotionDetails: Array<{ id: string; discountApplied: number }> | undefined = undefined;
+            if (Array.isArray(promotions) && promotions.length > 0) {
+                const det = promotions
+                    .map((p: any) => {
+                        const id = typeof p === 'string' ? p : p?.id;
+                        const discount = Number((p?.discount ?? 0));
+                        if (typeof id === 'string' && id.length > 0) return { id, discountApplied: discount };
+                        return null;
+                    })
+                    .filter(Boolean) as Array<{ id: string; discountApplied: number }>;
+                promotionDetails = det.length > 0 ? det : undefined;
+            }
+            // ------------------------------------------------
+
+            let payload: any = {
+                cartId: cart?.id ?? null,
+                shippingId: selectedShippingId,
+                shippingLabel: shippingLabel,
+                paymentId: selectedPaymentId,
+                items: itemsForApi,
+                customerNote: '',
+                couponCode: appliedCoupon ?? undefined, // envia o código do cupom
+                shippingCost: currentFrete,
+                shippingRaw: selectedShipping?.raw ?? selectedShipping ?? null,
+                orderTotalOverride: totalWithInstallments,
+                promotion_id: promotion_id, // mantive seu campo (json)
+                promotionDetails: promotionDetails, // NOVO campo com descontos aplicados por promoção
+            };
+
+            if (isAuthenticated) {
+                payload.addressId = selectedAddressId
+            } else {
+                if (selectedAddressId?.startsWith('guest-')) {
+                    const localAddress = addresses.find((a) => a.id === selectedAddressId)
+                    if (!localAddress) throw new Error('Endereço inválido')
+                    payload.address = {
+                        street: localAddress.street,
+                        number: localAddress.number,
+                        neighborhood: localAddress.neighborhood,
+                        city: localAddress.city,
+                        state: localAddress.state,
+                        zipCode: localAddress.zipCode?.replace(/\D/g, ''),
+                        country: localAddress.country,
+                        complement: localAddress.complement,
+                        reference: localAddress.reference,
+                    }
+                } else {
+                    if (selectedAddressId) payload.addressId = selectedAddressId
+                }
+            }
+
+            if (isCard) {
+                const expMonth = String(cardExpMonth).padStart(2, '0')
+                const expYear = String(cardExpYear).length === 2 ? `20${cardExpYear}` : String(cardExpYear)
+
+                payload.card = {
+                    number: cardNumber.replace(/\s+/g, ''),
+                    holderName: cardHolder.trim(),
+                    expirationMonth: expMonth,
+                    expirationYear: expYear,
+                    cvv: cardCvv,
+                    installments: cardInstallments ?? 1,
+                    brand: currentBrand,
+                }
+            }
+
+            const resp = await api.post('/checkout/order', payload)
+            const data = resp.data ?? {}
+
+            const skipped = data.skippedPromotions ?? [];
+            if (skipped && skipped.length > 0) {
+                // mostra motivo ao usuário (ajuste de mensagem conforme UX)
+                const msgs = skipped.map((s: { id: any; reason: any }) => `${s.reason}`).join('; ');
+                toast.warn(`Algumas promoções não foram aplicadas: ${msgs}`);
+            }
+
+            try {
+                const lastOrderObj = {
+                    orderId: data.orderId ?? null,
+                    orderTotal: totalWithInstallments,
+                    shippingCost: currentFrete,
+                    shippingAddress: selectedAddress ?? null,
+                    paymentData: data.paymentData ?? null,
+                    paymentMethod: selectedPaymentId ?? null,
+                    shippingLabel: shippingLabel ?? null,
+                    shippingRaw: selectedShipping?.raw ?? selectedShipping ?? null,
+                    createdAt: new Date().toISOString(),
+                }
+                sessionStorage.setItem(`lastOrder:${String(data.orderId ?? '')}`, JSON.stringify(lastOrderObj))
+            } catch (e) {
+                console.warn('Não foi possível salvar lastOrder no sessionStorage', e)
+            }
+
+            clearCart()
+            router.push(`/order/success/${data.orderId}`)
+        } catch (err: any) {
+            console.error('Erro ao finalizar pedido', err)
+            toast.error(err?.response?.data?.message ?? err?.message ?? 'Não foi possível finalizar o pedido.')
+        } finally {
+            setPlacingOrder(false)
+        }
     }
-}
 
     function brandImageSrc(brand: string) {
         return `/card-brands/${brand}.png`
@@ -804,6 +840,7 @@ export default function FinishOrderPage() {
                         API_URL={API_URL}
                         totalWithInstallments={totalWithInstallments}
                         validatingCoupon={validatingCoupon}
+                        skippedPromotions={skippedPromotions}
                     />
                 </div>
 
