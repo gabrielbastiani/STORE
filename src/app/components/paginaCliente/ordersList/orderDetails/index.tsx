@@ -8,7 +8,7 @@ import AddressSection from "./AddressSection";
 import ProductsTable from "./ProductsTable";
 import SummaryBox from "./SummaryBox";
 import ActionButtons from "./ActionButtons";
-import OrderChat from "./OrderChat";
+import OrderChat from "./orderChat/OrderChat";
 import { PRINT_CSS, getAsaasWebhookPayload, getGwRaw } from "./helpers";
 import { mapApiStatusToUi, paymentMethodLabel } from "../lib/orders";
 import { AuthContextStore } from "@/app/contexts/AuthContextStore";
