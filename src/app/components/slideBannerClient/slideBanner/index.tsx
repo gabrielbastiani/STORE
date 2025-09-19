@@ -46,7 +46,7 @@ export function SlideBanner({ position, local, banners, intervalTime }: SliderPr
       try {
         const apiClient = setupAPIClient();
         const [bannersResponse, intervalResponse] = await Promise.all([
-          apiClient.get<PublicationProps[]>(`/marketing_publication/blog_publications/slides?position=${position}&local=${local}`),
+          apiClient.get<PublicationProps[]>(`/marketing_publication/store_publications/slides?position=${position}&local=${local}`),
           apiClient.get<any>(`/marketing_publication/interval_banner/page_banner?local_site=${local}`)
         ]);
 

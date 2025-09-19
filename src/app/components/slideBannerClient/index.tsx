@@ -20,7 +20,7 @@ export const SlideBannerClient = ({ position, local_site, local }: ClientSlideBa
             const apiClient = setupAPIClient();
             try {
                 const [bannersRes, intervalRes] = await Promise.all([
-                    apiClient.get<any>(`/marketing_publication/blog_publications/slides?position=${position}&local=${local}`),
+                    apiClient.get<any>(`/marketing_publication/store_publications/slides?position=${position}&local=${local}`),
                     apiClient.get<any>(`/marketing_publication/interval_banner/page_banner?local_site=${local_site}`)
                 ]);
                 setBanners(bannersRes.data);

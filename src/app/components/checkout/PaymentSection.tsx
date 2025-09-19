@@ -27,6 +27,7 @@ type Props = {
 }
 
 export default function PaymentSection(props: Props) {
+    
     const {
         paymentOptions, selectedPaymentId, setSelectedPaymentId,
         cardNumber, cardHolder, cardExpMonth, cardExpYear, cardCvv, cardInstallments, detectedBrand,

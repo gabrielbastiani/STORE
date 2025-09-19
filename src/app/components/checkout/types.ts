@@ -61,4 +61,4 @@ export type PromotionDetail = {
   discount?: number;
 }
 
-export type SkippedPromo = any
+export type SkippedPromo = any;
