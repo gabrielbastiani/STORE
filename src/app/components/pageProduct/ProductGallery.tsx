@@ -125,7 +125,7 @@ export default function ProductGallery({
             <button
               key={idx}
               onClick={() => setSelectedImageIndex(idx)}
-              className={`w-20 h-20 border rounded-lg overflow-hidden flex-shrink-0 ${idx === selectedImageIndex ? "border-blue-600" : "border-gray-200"
+              className={`w-20 h-20 border rounded-lg overflow-hidden flex-shrink-0 ${idx === selectedImageIndex ? "border-orange-600" : "border-gray-200"
                 }`}
             >
               <Image
@@ -214,7 +214,7 @@ export default function ProductGallery({
                   <button
                     key={idx}
                     onClick={() => setSelectedVideoIndex(idx)}
-                    className={`flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 ${idx === selectedVideoIndex ? "border-blue-600" : "border-gray-200"
+                    className={`flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 ${idx === selectedVideoIndex ? "border-orange-600" : "border-gray-200"
                       }`}
                   >
                     {thumbnail ? (

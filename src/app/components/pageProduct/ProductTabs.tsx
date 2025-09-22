@@ -58,7 +58,7 @@ export default function ProductTabs({
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={`px-6 py-4 font-medium border-b-2 text-sm md:text-base ${activeTab === tab
-                ? "border-blue-600 text-blue-600"
+                ? "border-orange-600 text-orange-600"
                 : "border-transparent text-gray-600 hover:text-gray-800"
                 }`}
             >
