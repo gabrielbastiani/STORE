@@ -28,7 +28,7 @@ import RelatedProducts from "@/app/components/pageProduct/RelatedProducts";
 import { LoginFormData, ReviewFormData } from "Types/types";
 import ShippingEstimator, { ShippingOption } from "@/app/components/pageProduct/ShippingEstimator";
 import Highlights from "@/app/components/highlights";
-import ProductQuestions from "@/app/components/pageProduct/ProductQuestions";
+import ProductQuestions from "@/app/components/pageProduct/productQuestions";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 const STORAGE_KEY = "recently_viewed";
@@ -604,7 +604,7 @@ export default function ProductPage({ params }: { params: Promise<{ productSlug:
         <ProductQuestions
           productId={product?.id}
           onRequestLogin={() => setShowLoginModal(true)}
-          initialPageSize={10}
+          initialPageSize={5}
         />
 
         <Highlights />

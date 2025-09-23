@@ -13,7 +13,9 @@ const PUBLIC_PATHS = [
     '/produto',
     '/busca',
     '/carrinho',
-    '/favoritos'
+    '/favoritos',
+    '/atendimento',
+    '/quem-somos'
     // se você tiver mais rotas públicas, adicione aqui
 ]
 
