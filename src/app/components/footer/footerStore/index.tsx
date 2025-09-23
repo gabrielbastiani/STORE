@@ -71,7 +71,7 @@ export const FooterStore: React.FC = () => {
                             </div>
                         )}
                         <div className="text-sm leading-relaxed">
-                            <SafeHTML html={configs?.about_store || ""} />
+                            <SafeHTML html={configs?.resume_about_store || ""} />
                         </div>
                     </div>
 

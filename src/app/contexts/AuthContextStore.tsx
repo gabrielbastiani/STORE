@@ -60,6 +60,7 @@ interface ConfigProps {
     favicon?: string;
     privacy_policies?: string;
     about_store?: string;
+    resume_about_store?: string;
     exchanges_and_returns?: string;
     how_to_buy?: string;
     shipping_delivery_time?: string;
@@ -108,6 +109,7 @@ export function AuthProviderStore({ children }: AuthProviderProps) {
         favicon: "",
         privacy_policies: "",
         about_store: "",
+        resume_about_store: "",
         exchanges_and_returns: "",
         how_to_buy: "",
         shipping_delivery_time: "",
@@ -144,6 +146,7 @@ export function AuthProviderStore({ children }: AuthProviderProps) {
                         country: "XXX",
                         favicon: "../../app/favicon.ico",
                         about_store: "Sem descrição",
+                        resume_about_store: "Sem descrição",
                         exchanges_and_returns: "Seu nome",
                         privacy_policies: "Sua politica",
                         payment_methods: "Pagamentos",
@@ -175,6 +178,7 @@ export function AuthProviderStore({ children }: AuthProviderProps) {
                         country: "XXX",
                         favicon: "../../app/favicon.ico",
                         about_store: "Sem descrição",
+                        resume_about_store: "Sem descrição",
                         exchanges_and_returns: "Seu nome",
                         privacy_policies: "Sua politica",
                         payment_methods: "Pagamentos",

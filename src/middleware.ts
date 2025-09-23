@@ -15,7 +15,13 @@ const PUBLIC_PATHS = [
     '/carrinho',
     '/favoritos',
     '/atendimento',
-    '/quem-somos'
+    '/quem-somos',
+    '/politicas-de-privacidade',
+    '/trocas-e-devolucao',
+    '/como-comprar',
+    '/envio-e-prazo-de-entrega',
+    '/perguntas-frequentes',
+    '/formas-de-pagamento'
     // se você tiver mais rotas públicas, adicione aqui
 ]
 
