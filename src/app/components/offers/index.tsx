@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
+import React, { useEffect, useMemo, useState } from "react";
 import { setupAPIClient } from "@/services/api";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Navigation } from "swiper/modules";
@@ -13,25 +13,29 @@ import { ProductFormData } from "Types/types";
 import { useTheme } from "@/app/contexts/ThemeContext";
 import { useCart } from "@/app/contexts/CartContext";
 import { createPortal } from "react-dom";
-import { toast } from "react-toastify";
+import SpotBadgeCarousel from "@/app/components/category/SpotBadgeCarousel";
+import {
+    collectSpotBadgesFromProductObject,
+    fetchSpotBadgesFromApi,
+    SpotBadge,
+} from "@/utils/promotionUtils";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
-/* =========================
-   OfferCard (layout original)
-   - produtos sem variante -> botão "Adicionar" direto
-   - produtos com variantes -> botão "Ver opções" (abre modal via portal)
-   ========================= */
+/* -------------------------
+   OfferCard -> cartão exibido dentro do slide
+   ------------------------- */
 function OfferCard({ product }: { product: ProductFormData }) {
+
     const { colors } = useTheme();
     const { addItem } = useCart();
     const [quantity, setQuantity] = useState<number>(1);
     const [adding, setAdding] = useState<boolean>(false);
     const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
 
-    const hasOffer = !!product.price_of && product.price_per! < product.price_of!;
+    const hasOffer = !!product.price_of && (product.price_per ?? 0) < (product.price_of ?? 0);
     const discountPercentage = hasOffer
-        ? Math.round((1 - product.price_per! / (product.price_of ?? product.price_per!)) * 100)
+        ? Math.round((1 - (product.price_per ?? 0) / (product.price_of ?? (product.price_per ?? 1))) * 100)
         : 0;
 
     const findPrimary = () => {
@@ -42,18 +46,11 @@ function OfferCard({ product }: { product: ProductFormData }) {
     const primary = findPrimary();
     const imageSrc = primary ? (String(primary).startsWith("http") ? String(primary) : `${API_URL}/files/${primary}`) : "/placeholder.png";
 
-    const formatter = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
-    const formattedPricePer = formatter.format(product.price_per ?? 0);
-    const formattedPriceOf = product.price_of ? formatter.format(product.price_of) : null;
-    const formattedInstallment = formatter.format((product.price_per ?? 0) / 12);
-
     function handleDecrease() {
         setQuantity((q) => Math.max(1, q - 1));
     }
     function handleIncrease() {
-        // respeita estoque se definido
-        const stock = Number(product.stock ?? 0);
-        setQuantity((q) => (stock > 0 ? Math.min(stock, q + 1) : q + 1));
+        setQuantity((q) => q + 1);
     }
 
     async function handleAddSimple() {
@@ -61,14 +58,44 @@ function OfferCard({ product }: { product: ProductFormData }) {
             setAdding(true);
             await addItem(String(product.id), quantity);
             setQuantity(1);
-            try { toast?.success?.("Adicionado ao carrinho"); } catch { }
         } catch (err) {
-            console.error(err);
-            try { toast?.error?.("Erro ao adicionar ao carrinho"); } catch { }
+            console.error("OfferCard addItem error:", err);
         } finally {
             setAdding(false);
         }
     }
+
+    // SPOT badges logic: prefer embedded badges (product.mainPromotion/promotions.displays SPOT)
+    const embeddedSpotBadges = useMemo(() => collectSpotBadgesFromProductObject(product), [product]);
+    const [spotBadges, setSpotBadges] = useState<SpotBadge[]>(embeddedSpotBadges);
+
+    useEffect(() => {
+        let mounted = true;
+
+        (async () => {
+            // if embedded badges exist, use them (no API call)
+            if (embeddedSpotBadges && embeddedSpotBadges.length > 0) {
+                if (mounted) setSpotBadges(embeddedSpotBadges);
+                return;
+            }
+
+            // otherwise fetch from API for this product id (only if product.id exists)
+            if (!product?.id) {
+                if (mounted) setSpotBadges([]);
+                return;
+            }
+
+            try {
+                const fetched = await fetchSpotBadgesFromApi(String(product.id));
+                if (mounted) setSpotBadges(Array.isArray(fetched) ? fetched : []);
+            } catch (err) {
+                console.warn("fetchSpotBadgesFromApi failed:", err);
+                if (mounted) setSpotBadges([]);
+            }
+        })();
+
+        return () => { mounted = false; };
+    }, [product?.id, embeddedSpotBadges]);
 
     return (
         <>
@@ -76,6 +103,29 @@ function OfferCard({ product }: { product: ProductFormData }) {
                 className="relative rounded shadow p-4 hover:shadow-lg transition flex flex-col h-[420px]"
                 style={{ background: colors?.fundo_posts_mais_vizualizados || "#e5e9ee" }}
             >
+                {/* Spot badges - show only when there are SPOT badges for this product */}
+                {spotBadges && spotBadges.length > 0 && (
+                    spotBadges.length > 1 ? (
+                        <SpotBadgeCarousel badges={spotBadges} size={56} intervalMs={3000} />
+                    ) : (
+                        <div className="absolute top-3 right-3 flex items-end gap-2 z-20">
+                            <div className="w-12 h-12 bg-white p-1 rounded shadow flex items-center justify-center">
+                                {spotBadges[0].imageUrl ? (
+                                    <Image
+                                        src={spotBadges[0].imageUrl}
+                                        alt={spotBadges[0].title ?? "badge"}
+                                        width={48}
+                                        height={48}
+                                        className="object-contain"
+                                    />
+                                ) : (
+                                    <div className="text-xs text-amber-700 px-1">{spotBadges[0].title ?? "Selo"}</div>
+                                )}
+                            </div>
+                        </div>
+                    )
+                )}
+
                 {hasOffer && (
                     <div className="absolute top-2 left-2 bg-red-600 text-white text-xs uppercase font-bold px-2 py-1 rounded">
                         -{discountPercentage}% OFF
@@ -106,10 +156,12 @@ function OfferCard({ product }: { product: ProductFormData }) {
                 ) : (
                     <div className="mt-auto">
                         <div className="flex items-baseline">
-                            <span className="text-xl font-bold text-red-600">{formattedPricePer}</span>
-                            {hasOffer && formattedPriceOf && <span className="text-sm text-gray-500 line-through ml-2">{formattedPriceOf}</span>}
+                            <span className="text-xl font-bold text-red-600">{(product.price_per ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
+                            {hasOffer && product.price_of && (
+                                <span className="text-sm text-gray-500 line-through ml-2">{(product.price_of ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
+                            )}
                         </div>
-                        <p className="text-xs text-gray-600 mb-4">12x de {formattedInstallment} sem juros no cartão</p>
+                        <p className="text-xs text-gray-600 mb-4">12x de {(product.price_per ?? 0 / 12).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} sem juros no cartão</p>
 
                         <div className="flex items-center">
                             <div className="flex items-center border rounded border-gray-400">
@@ -141,24 +193,22 @@ function OfferCard({ product }: { product: ProductFormData }) {
                 )}
             </div>
 
-            {isModalOpen && (
-                <OfferVariantModalPortal product={product} onClose={() => setIsModalOpen(false)} />
-            )}
+            {isModalOpen && <OfferVariantModalPortal product={product} onClose={() => setIsModalOpen(false)} />}
         </>
     );
 }
 
-/* =========================
-   OfferVariantModalPortal -> createPortal wrapper
-   ========================= */
+/* -------------------------
+   OfferVariantModalPortal -> portal wrapper
+   ------------------------- */
 function OfferVariantModalPortal({ product, onClose }: { product: ProductFormData; onClose: () => void; }) {
     if (typeof document === "undefined") return null;
     return createPortal(<OfferVariantModalInner product={product} onClose={onClose} />, document.body);
 }
 
-/* =========================
-   OfferVariantModalInner -> conteúdo do modal
-   ========================= */
+/* -------------------------
+   OfferVariantModalInner -> conteúdo do modal (adaptado)
+   ------------------------- */
 function OfferVariantModalInner({ product, onClose }: { product: ProductFormData; onClose: () => void; }) {
     const { addItem } = useCart();
     const [quantity, setQuantity] = useState<number>(1);
@@ -183,7 +233,7 @@ function OfferVariantModalInner({ product, onClose }: { product: ProductFormData
 
     const variants = Array.isArray(product.variants) ? product.variants : [];
 
-    const attributeOptions = useMemo(() => {
+    const attributeOptions = React.useMemo(() => {
         const map: Record<string, string[]> = {};
         variants.forEach((v: any) => {
             const attrs = v.attributes ?? v.variantAttribute ?? v.variantAttributes ?? [];
@@ -199,7 +249,7 @@ function OfferVariantModalInner({ product, onClose }: { product: ProductFormData
         return map;
     }, [variants]);
 
-    const attributeImagesMap = useMemo(() => {
+    const attributeImagesMap = React.useMemo(() => {
         const map: Record<string, Record<string, string[]>> = {};
         variants.forEach((v: any) => {
             const attrs = v.attributes ?? v.variantAttribute ?? v.variantAttributes ?? [];
@@ -255,7 +305,6 @@ function OfferVariantModalInner({ product, onClose }: { product: ProductFormData
         return Array.from(set).filter(Boolean);
     }
 
-    // pre-selection on open
     useEffect(() => {
         setQuantity(1);
         if (!variants || variants.length === 0) {
@@ -321,7 +370,6 @@ function OfferVariantModalInner({ product, onClose }: { product: ProductFormData
 
     const displayPrice = Number(selectedVariant?.price_per ?? product.price_per ?? 0);
     const displayPriceOf = selectedVariant?.price_of ?? product.price_of ?? null;
-    const displayStock = Number(selectedVariant?.stock ?? product.stock ?? 0);
 
     const formatter = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
     const formattedPricePer = formatter.format(displayPrice ?? 0);
@@ -334,12 +382,10 @@ function OfferVariantModalInner({ product, onClose }: { product: ProductFormData
             setAdding(true);
             await addItem(String(product.id), quantity, selectedVariant?.id ?? null);
             setAdding(false);
-            try { toast?.success?.("Adicionado ao carrinho"); } catch { }
             onClose();
         } catch (err) {
             console.error("addItem modal error", err);
             setAdding(false);
-            try { toast?.error?.("Erro ao adicionar"); } catch { }
         }
     }
 
@@ -434,10 +480,7 @@ function OfferVariantModalInner({ product, onClose }: { product: ProductFormData
                             <div className="flex items-center gap-2">
                                 <button onClick={() => setQuantity(q => Math.max(1, q - 1))} className="px-3 py-1 border rounded disabled:opacity-50">-</button>
                                 <div className="px-3">{quantity}</div>
-                                <button onClick={() => {
-                                    const max = Number(selectedVariant?.stock ?? product.stock ?? 0) || Infinity;
-                                    setQuantity(q => (isFinite(max) ? Math.min(max, q + 1) : q + 1));
-                                }} className="px-3 py-1 border rounded">+</button>
+                                <button onClick={() => setQuantity(q => q + 1)} className="px-3 py-1 border rounded">+</button>
                             </div>
                         </div>
 
@@ -460,10 +503,11 @@ function OfferVariantModalInner({ product, onClose }: { product: ProductFormData
     );
 }
 
-/* =========================
-   Export default Offers (Swiper)
-   ========================= */
+/* -------------------------
+   Offers (Swiper) export
+   ------------------------- */
 export default function Offers() {
+    
     const { colors } = useTheme();
     const [offers, setOffers] = useState<ProductFormData[]>([]);
 
@@ -472,9 +516,10 @@ export default function Offers() {
         async function fetchOffers() {
             try {
                 const { data } = await apiClient.get(`/products/offers`);
-                setOffers(data);
+                setOffers(Array.isArray(data) ? data : []);
             } catch (error) {
-                console.error(error);
+                console.error("Offers fetch error:", error);
+                setOffers([]);
             }
         }
         fetchOffers();

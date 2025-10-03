@@ -33,6 +33,7 @@ interface Props {
     variantName?: string;
 }
 
+/* --- helpers / labels --- */
 const ConditionLabel: Record<string, string> = {
     FIRST_ORDER: "Se 1ª compra",
     CART_ITEM_COUNT: "Se a quantidade de produtos no carrinho for",
@@ -119,32 +120,38 @@ const safeParse = (value: any): any => {
 
 /**
  * interpretIncomingPromo:
- * tratado para aceitar formatos diversos (promo standalone, promo override, variant object, etc).
+ * Aceita formatos diversos (promo standalone, promo override, variant object, etc).
+ * Agora com lógica para mesclar "base" + "variant override" de forma mais robusta.
  */
 const interpretIncomingPromo = (promo: any): { merged: Promotion | null; base: any | null; variant: any | null; variantSourceName?: string | null; sourceIsVariantObject?: boolean } => {
     if (!promo) return { merged: null, base: null, variant: null, variantSourceName: null, sourceIsVariantObject: false };
 
+    // Detecta se veio um objeto tipo "variant" (registro de produto variante)
     const looksLikeVariantObject =
         !!(promo.productVariantImage || promo.variantAttribute || promo.productVariantVideo) ||
         (!!promo.product_id && !!promo.sku && (promo.hasOwnProperty("price_of") || promo.hasOwnProperty("price_per")));
 
+    // Caso: veio um objeto variante (que pode ter mainPromotion ou variantPromotions)
     if (looksLikeVariantObject) {
-        // Se há variantPromotions array (antigo formato)
+        // Forma antiga: variantPromotions array com elementos que podem incluir mainPromotion
         if (Array.isArray(promo.variantPromotions) && promo.variantPromotions.length > 0) {
             const vp = promo.variantPromotions[0];
+            // if variantPromotions[0] includes a mainPromotion, merge them preferring variant overrides
             const base = vp?.mainPromotion ?? null;
             if (base) {
                 const merged: Promotion = {
                     ...base,
                     ...vp,
-                    conditions: Array.isArray(vp.conditions) && vp.conditions.length ? vp.conditions : (Array.isArray(base.conditions) ? base.conditions : []),
-                    actions: Array.isArray(vp.actions) && vp.actions.length ? vp.actions : (Array.isArray(base.actions) ? base.actions : []),
-                    displays: Array.isArray(vp.displays) && vp.displays.length ? vp.displays : (Array.isArray(base.displays) ? base.displays : []),
-                    coupons: Array.isArray(vp.coupons) && vp.coupons.length ? vp.coupons : (Array.isArray(base.coupons) ? base.coupons : []),
-                    badges: Array.isArray(vp.badges) && vp.badges.length ? vp.badges : (Array.isArray(base.badges) ? base.badges : []),
+                    // variant overrides take precedence where present
+                    conditions: (Array.isArray(vp.conditions) && vp.conditions.length) ? vp.conditions : (Array.isArray(base.conditions) ? base.conditions : []),
+                    actions: (Array.isArray(vp.actions) && vp.actions.length) ? vp.actions : (Array.isArray(base.actions) ? base.actions : []),
+                    displays: (Array.isArray(vp.displays) && vp.displays.length) ? vp.displays : (Array.isArray(base.displays) ? base.displays : []),
+                    coupons: (Array.isArray(vp.coupons) && vp.coupons.length) ? vp.coupons : (Array.isArray(base.coupons) ? base.coupons : []),
+                    badges: (Array.isArray(vp.badges) && vp.badges.length) ? vp.badges : (Array.isArray(base.badges) ? base.badges : []),
                 } as Promotion;
                 return { merged, base, variant: vp, variantSourceName: promo.sku || promo.name || null, sourceIsVariantObject: true };
             } else {
+                // direct variant promo without a base mainPromotion
                 const direct: Promotion = {
                     ...vp,
                     conditions: Array.isArray(vp.conditions) ? vp.conditions : [],
@@ -157,7 +164,7 @@ const interpretIncomingPromo = (promo: any): { merged: Promotion | null; base: a
             }
         }
 
-        // se a variante guarda um mainPromotion objeto (novo formato)
+        // Novo formato: variante traz mainPromotion (objeto) diretamente
         if (promo.mainPromotion) {
             const vp = promo.mainPromotion;
             const direct: Promotion = {
@@ -175,11 +182,13 @@ const interpretIncomingPromo = (promo: any): { merged: Promotion | null; base: a
         return { merged: null, base: null, variant: null, variantSourceName: promo.sku || promo.name || null, sourceIsVariantObject: true };
     }
 
+    // Caso: veio um objeto "promo" que possui mainPromotion (promo que veio do product carregado)
     if (promo.mainPromotion) {
         const base = promo.mainPromotion;
         const merged: Promotion = {
             ...base,
             ...promo,
+            // merge arrays: prefer explicit arrays on promo (overrides) else use base arrays
             conditions: Array.isArray(promo.conditions) && promo.conditions.length ? promo.conditions : (Array.isArray(base.conditions) ? base.conditions : []),
             actions: Array.isArray(promo.actions) && promo.actions.length ? promo.actions : (Array.isArray(base.actions) ? base.actions : []),
             displays: Array.isArray(promo.displays) && promo.displays.length ? promo.displays : (Array.isArray(base.displays) ? base.displays : []),
@@ -189,6 +198,7 @@ const interpretIncomingPromo = (promo: any): { merged: Promotion | null; base: a
         return { merged, base, variant: promo, variantSourceName: promo.variantName || promo.sku || null, sourceIsVariantObject: false };
     }
 
+    // Caso: já é uma promoção standalone (com condições/actions/displays)
     const looksLikePromotion = !!(promo && (promo.conditions || promo.actions || promo.displays || promo.coupons || promo.startDate || promo.endDate || promo.name));
     if (looksLikePromotion) {
         const direct: Promotion = {
@@ -202,6 +212,7 @@ const interpretIncomingPromo = (promo: any): { merged: Promotion | null; base: a
         return { merged: direct, base: promo, variant: null, variantSourceName: null, sourceIsVariantObject: false };
     }
 
+    // Se nada bateu, retorna vazio
     return { merged: null, base: null, variant: null, variantSourceName: null, sourceIsVariantObject: false };
 };
 
@@ -225,7 +236,9 @@ export default function PromotionRulesModal({
         [promo]
     );
 
-    // controlar aba inicial / visibilidade dependendo de quem foi passado
+    // Se o modal recebeu apenas uma "promo minimal" (ex.: { id: '...' }) sem conteúdo, tentamos aproveitar qualquer
+    // propriedade rica que possa existir dentro do mesmo objeto (ex.: promo.mainPromotion, promo.variantPromotions etc.)
+    // (Já tratado em interpretIncomingPromo; aqui garantimos a UX com tabs)
     useEffect(() => {
         if (sourceIsVariantObject) {
             setShowMainTab(false);
@@ -236,6 +249,7 @@ export default function PromotionRulesModal({
         }
     }, [sourceIsVariantObject, basePromo, variantPromo, normalizedPromo?.id]);
 
+    // Collect ids for lookup
     const { productIds, variantIds } = useMemo(() => {
         if (!normalizedPromo) return { productIds: [], variantIds: [] };
         try {
@@ -245,6 +259,7 @@ export default function PromotionRulesModal({
         }
     }, [normalizedPromo]);
 
+    // countdown
     useEffect(() => {
         if (!normalizedPromo?.endDate) {
             setTimeLeft(null);
@@ -252,20 +267,23 @@ export default function PromotionRulesModal({
         }
 
         const updateTimeLeft = () => {
-            // @ts-ignore
-            const end = new Date(normalizedPromo.endDate);
-            const now = new Date();
-            const diffMs = end.getTime() - now.getTime();
+            try {
+                const end = new Date(normalizedPromo.endDate || "");
+                const now = new Date();
+                const diffMs = end.getTime() - now.getTime();
 
-            if (diffMs <= 0) {
-                setTimeLeft("Expirado");
-                return;
+                if (diffMs <= 0) {
+                    setTimeLeft("Expirado");
+                    return;
+                }
+
+                const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+                setTimeLeft(days > 0 ? `${days}d ${hours}h` : `${hours}h ${minutes}m`);
+            } catch {
+                setTimeLeft(null);
             }
-
-            const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-            const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-            const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-            setTimeLeft(days > 0 ? `${days}d ${hours}h` : `${hours}h ${minutes}m`);
         };
 
         updateTimeLeft();
@@ -274,6 +292,7 @@ export default function PromotionRulesModal({
         return () => clearInterval(interval);
     }, [normalizedPromo?.endDate]);
 
+    // lookup names (if preloaded not complete)
     useEffect(() => {
         if (!open) return;
 
@@ -486,11 +505,12 @@ export default function PromotionRulesModal({
     const startDate = normalizedPromo?.startDate ? new Date(normalizedPromo.startDate) : null;
     const endDate = normalizedPromo?.endDate ? new Date(normalizedPromo.endDate) : null;
 
+    // The modal shows "normalizedPromo" as the merged main promo view (if present)
+    // and displays variant-specific override tab using variantPromo.
     const conditions = Array.isArray(normalizedPromo?.conditions) ? normalizedPromo!.conditions : [];
     const actions = Array.isArray(normalizedPromo?.actions) ? normalizedPromo!.actions : [];
     const displays = Array.isArray(normalizedPromo?.displays) ? normalizedPromo!.displays : [];
 
-    // headerScope: texto que explica se é promoção da variante ou do produto principal
     const headerScope = (() => {
         if (variantPromo && basePromo) return `Variante: ${variantName || variantSourceName || "—"} (override)`;
         if (variantPromo && !basePromo) return `Promoção da Variante: ${variantName || variantSourceName || "—"}`;
@@ -498,11 +518,11 @@ export default function PromotionRulesModal({
         return "Promoção";
     })();
 
-    // badges da variante: podem estar em variantPromo.badges ou (quando veio o objeto variant como promo) em normalizedPromo.badges
+    // variant badges (variant first, else normalized when source was variant)
     const variantBadges = (variantPromo && Array.isArray(variantPromo.badges) && variantPromo.badges.length) ? variantPromo.badges
         : (sourceIsVariantObject && Array.isArray(normalizedPromo?.badges) && normalizedPromo!.badges.length ? normalizedPromo!.badges : undefined);
 
-    // badges da promoção principal (base)
+    // base badges
     const baseBadges = (basePromo && Array.isArray(basePromo.badges) && basePromo.badges.length) ? basePromo.badges : undefined;
 
     return (
@@ -527,7 +547,6 @@ export default function PromotionRulesModal({
                             </h3>
                             <div className="text-sm text-amber-700 mt-1">{headerScope}</div>
 
-                            {/* BADGES NO CABEÇALHO: variante (roxo) primeiro, depois principal (âmbar) */}
                             {(variantBadges || baseBadges) && (
                                 <div className="mt-3 flex flex-wrap gap-2 items-center">
                                     {variantBadges && variantBadges.length > 0 && variantBadges.map((b: any, i: number) => (
@@ -641,7 +660,6 @@ export default function PromotionRulesModal({
                         </div>
                     </section>
 
-                    {/* Abas */}
                     <div className="border-b mb-4">
                         <div className="flex -mb-px">
                             {showMainTab && basePromo && (
@@ -668,7 +686,6 @@ export default function PromotionRulesModal({
                         </div>
                     </div>
 
-                    {/* Aba: principal */}
                     {activeTab === 'main' && showMainTab && basePromo && (
                         <section>
                             <h4 className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
@@ -733,13 +750,10 @@ export default function PromotionRulesModal({
                                         </div>
                                     </div>
                                 )}
-
-                                {/* NOTA: basePromo.badges já renderizadas no cabeçalho para destaque; removido daqui para evitar duplicação */}
                             </div>
                         </section>
                     )}
 
-                    {/* Aba: variante */}
                     {activeTab === 'variant' && variantHasOverrides && variantPromo && (
                         <section>
                             <h4 className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
@@ -804,8 +818,6 @@ export default function PromotionRulesModal({
                                         </div>
                                     </div>
                                 )}
-
-                                {/* badges da variante já renderizadas no cabeçalho para destaque */}
                             </div>
                         </section>
                     )}

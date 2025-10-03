@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
+import React, { useEffect, useMemo, useState } from "react";
 import { setupAPIClient } from "@/services/api";
 import Link from "next/link";
-import { useEffect, useState, useMemo } from "react";
 import Image from "next/image";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Navigation } from "swiper/modules";
@@ -13,50 +13,34 @@ import { ProductFormData } from "Types/types";
 import { useTheme } from "@/app/contexts/ThemeContext";
 import { useCart } from "@/app/contexts/CartContext";
 import { createPortal } from "react-dom";
+import SpotBadgeCarousel from "@/app/components/category/SpotBadgeCarousel";
+import { collectSpotBadgesFromProductObject, fetchSpotBadgesFromApi, SpotBadge } from "@/utils/promotionUtils";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
-/* ----------------------------
-   HighlightsCard (visual original)
-   - se tiver variants -> botão "Ver opções" abre modal (renderizado via portal)
-   - se não -> botão "Adicionar" com quantidade
-   ---------------------------- */
-function HighlightsCard({ product }: { product: ProductFormData }) {
-    
+function OfferCard({ product }: { product: ProductFormData }) {
+
     const { colors } = useTheme();
     const { addItem } = useCart();
     const [quantity, setQuantity] = useState<number>(1);
     const [adding, setAdding] = useState<boolean>(false);
-    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
 
-    // verifica se há desconto
-    const hasOffer = !!product.price_of && product.price_per! < product.price_of!;
+    const hasOffer = !!product.price_of && (product.price_per ?? 0) < (product.price_of ?? 0);
     const discountPercentage = hasOffer
-        ? Math.round((1 - product.price_per! / (product.price_of ?? product.price_per!)) * 100)
+        ? Math.round((1 - (product.price_per ?? 0) / (product.price_of ?? (product.price_per ?? 1))) * 100)
         : 0;
 
-    // escolhe imagem principal com segurança (product.images pode ter objetos com url/isPrimary)
     const findPrimary = () => {
         if (!Array.isArray(product.images) || product.images.length === 0) return null;
-        const prim = product.images.find((img: any) => img.isPrimary) ?? product.images[0];
+        const prim = (product.images as any[]).find((img: any) => img?.isPrimary) ?? product.images[0];
         return prim?.url ?? prim ?? null;
     };
     const primary = findPrimary();
     const imageSrc = primary ? (String(primary).startsWith("http") ? String(primary) : `${API_URL}/files/${primary}`) : "/placeholder.png";
 
-    // formatadores
-    const formatter = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
-    const formattedPricePer = formatter.format(product.price_per ?? 0);
-    const formattedPriceOf = product.price_of ? formatter.format(product.price_of) : null;
-    const formattedInstallment = formatter.format((product.price_per ?? 0) / 12);
-
-    function handleDecrease() {
-        setQuantity((q) => Math.max(1, q - 1));
-    }
-    function handleIncrease() {
-        setQuantity((q) => q + 1);
-    }
-
+    function handleDecrease() { setQuantity((q) => Math.max(1, q - 1)); }
+    function handleIncrease() { setQuantity((q) => q + 1); }
     async function handleAddSimple() {
         try {
             setAdding(true);
@@ -69,12 +53,49 @@ function HighlightsCard({ product }: { product: ProductFormData }) {
         }
     }
 
+    // badges SPOT: primeiro tenta extrair do objeto product (mainPromotion/promotions/displays SPOT)
+    const localBadges = useMemo(() => collectSpotBadgesFromProductObject(product), [product]);
+    const [spotBadges, setSpotBadges] = useState<SpotBadge[]>(localBadges);
+
+    useEffect(() => {
+        let mounted = true;
+        (async () => {
+            if (localBadges && localBadges.length > 0) {
+                if (mounted) setSpotBadges(localBadges);
+                return;
+            }
+            // fallback: consultar API somente se product.id existir
+            if (!product?.id) {
+                if (mounted) setSpotBadges([]);
+                return;
+            }
+            const fetched = await fetchSpotBadgesFromApi(String(product.id));
+            if (mounted) setSpotBadges(fetched);
+        })();
+        return () => { mounted = false; };
+    }, [product?.id, localBadges]);
+
     return (
         <>
             <div
                 className="relative rounded shadow p-4 hover:shadow-lg transition flex flex-col h-[420px]"
                 style={{ background: colors?.fundo_posts_mais_vizualizados || "#e5e9ee" }}
             >
+                {/* SPOT badges */}
+                {spotBadges && spotBadges.length > 0 && (
+                    spotBadges.length > 1 ? (
+                        <SpotBadgeCarousel badges={spotBadges} size={56} intervalMs={3000} />
+                    ) : (
+                        <div className="absolute top-3 right-3 flex items-end gap-2 z-20">
+                            <div className="w-12 h-12 bg-white p-1 rounded shadow flex items-center justify-center">
+                                {spotBadges[0].imageUrl ? (
+                                    <Image src={spotBadges[0].imageUrl} alt={spotBadges[0].title ?? "badge"} width={48} height={48} className="object-contain" />
+                                ) : <div className="text-xs text-amber-700 px-1">{spotBadges[0].title ?? "Selo"}</div>}
+                            </div>
+                        </div>
+                    )
+                )}
+
                 {hasOffer && (
                     <div className="absolute top-2 left-2 bg-red-600 text-white text-xs uppercase font-bold px-2 py-1 rounded">
                         -{discountPercentage}% OFF
@@ -82,78 +103,34 @@ function HighlightsCard({ product }: { product: ProductFormData }) {
                 )}
 
                 <Link href={`/produto/${product.slug}`} className="block">
-                    <Image
-                        src={imageSrc}
-                        alt={product.name}
-                        width={280}
-                        height={200}
-                        quality={100}
-                        className="w-full h-48 object-cover rounded mb-2"
-                    />
-                    <h3
-                        className="text-lg font-semibold mb-2"
-                        style={{ color: colors?.texto_posts_mais_vizualizados || "#000000" }}
-                    >
-                        {product.name}
-                    </h3>
+                    <Image src={imageSrc} alt={product.name} width={280} height={200} quality={100} className="w-full h-48 object-cover rounded mb-2" />
+                    <h3 className="text-lg font-semibold mb-2" style={{ color: colors?.texto_posts_mais_vizualizados || "#000000" }}>{product.name}</h3>
                 </Link>
 
                 {product?.stock === 0 ? (
-                    <div
-                        className="flex items-center justify-center flex-1 bg-white disabled:opacity-50 text-red-600 font-semibold rounded transition"
-                    >
-                        Produto Indisponível
-                    </div>
+                    <div className="flex items-center justify-center flex-1 bg-white disabled:opacity-50 text-red-600 font-semibold rounded transition">Produto Indisponível</div>
                 ) : (
                     <div className="mt-auto">
                         <div className="flex items-baseline">
-                            <span className="text-xl font-bold text-red-600">
-                                {formattedPricePer}
-                            </span>
-                            {hasOffer && formattedPriceOf && (
-                                <span className="text-sm text-gray-500 line-through ml-2">
-                                    {formattedPriceOf}
-                                </span>
-                            )}
+                            <span className="text-xl font-bold text-red-600">{(product.price_per ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
+                            {hasOffer && product.price_of && <span className="text-sm text-gray-500 line-through ml-2">{(product.price_of ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>}
                         </div>
-                        <p className="text-xs text-gray-600 mb-4">
-                            12x de {formattedInstallment} sem juros no cartão
-                        </p>
+                        <p className="text-xs text-gray-600 mb-4">12x de {((product.price_per ?? 0) / 12).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} sem juros no cartão</p>
 
                         <div className="flex items-center">
                             <div className="flex items-center border rounded border-gray-400">
-                                <button
-                                    onClick={handleDecrease}
-                                    disabled={quantity <= 1}
-                                    className="px-2 py-1 disabled:opacity-50 text-gray-400"
-                                >
-                                    –
-                                </button>
+                                <button onClick={() => setQuantity(q => Math.max(1, q - 1))} disabled={quantity <= 1} className="px-2 py-1 disabled:opacity-50 text-gray-400">–</button>
                                 <span className="px-4 text-gray-500">{quantity}</span>
-                                <button
-                                    onClick={handleIncrease}
-                                    className="px-2 py-1 text-gray-400"
-                                >
-                                    +
-                                </button>
+                                <button onClick={() => setQuantity(q => q + 1)} className="px-2 py-1 text-gray-400">+</button>
                             </div>
 
                             {Array.isArray(product.variants) && product.variants.length > 0 ? (
-                                <button
-                                    onClick={() => setIsModalOpen(true)}
-                                    className="ml-2 flex items-center justify-center flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-2 rounded transition"
-                                >
-                                    <FiShoppingCart className="mr-2 text-lg" />
-                                    Ver opções
+                                <button onClick={() => setIsModalOpen(true)} className="ml-2 flex items-center justify-center flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-2 rounded transition">
+                                    <FiShoppingCart className="mr-2 text-lg" /> Ver opções
                                 </button>
                             ) : (
-                                <button
-                                    onClick={handleAddSimple}
-                                    disabled={adding}
-                                    className="ml-2 flex items-center justify-center flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-semibold py-2 rounded transition"
-                                >
-                                    <FiShoppingCart className="mr-2 text-lg" />
-                                    {adding ? "Adicionando…" : "Adicionar"}
+                                <button onClick={handleAddSimple} disabled={adding} className="ml-2 flex items-center justify-center flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-semibold py-2 rounded transition">
+                                    <FiShoppingCart className="mr-2 text-lg" /> {adding ? "Adicionando…" : "Adicionar"}
                                 </button>
                             )}
                         </div>
@@ -162,28 +139,24 @@ function HighlightsCard({ product }: { product: ProductFormData }) {
             </div>
 
             {isModalOpen && (
-                // render modal via portal so it escapes Swiper / slide stacking/transform context
-                <VariantModalPortal product={product} onClose={() => setIsModalOpen(false)} />
+                <OfferVariantModalPortal product={product} onClose={() => setIsModalOpen(false)} />
             )}
         </>
     );
 }
 
-/* -------------------------
-   VariantModalPortal - monta o modal via createPortal no document.body
-   Conteúdo do modal é o mesmo do que já implementamos — responsivo.
-   ------------------------- */
-function VariantModalPortal({ product, onClose }: { product: ProductFormData; onClose: () => void; }) {
-    // We build the modal content here then portal it
-    const modalContent = <VariantModalInner product={product} onClose={onClose} />;
+/* =========================
+   OfferVariantModalPortal -> createPortal wrapper
+   ========================= */
+function OfferVariantModalPortal({ product, onClose }: { product: ProductFormData; onClose: () => void; }) {
     if (typeof document === "undefined") return null;
-    return createPortal(modalContent, document.body);
+    return createPortal(<OfferVariantModalInner product={product} onClose={onClose} />, document.body);
 }
 
-/* -------------------------
-   VariantModalInner - conteúdo real do modal (não relacionado ao portal)
-   ------------------------- */
-function VariantModalInner({ product, onClose }: { product: ProductFormData; onClose: () => void; }) {
+/* =========================
+   OfferVariantModalInner -> conteúdo do modal (adaptado do padrão usado no projeto)
+   ========================= */
+function OfferVariantModalInner({ product, onClose }: { product: ProductFormData; onClose: () => void; }) {
     const { addItem } = useCart();
     const [quantity, setQuantity] = useState<number>(1);
     const [adding, setAdding] = useState<boolean>(false);
@@ -192,7 +165,6 @@ function VariantModalInner({ product, onClose }: { product: ProductFormData; onC
     const [mainImage, setMainImage] = useState<string | null>(null);
     const [activeThumbIndex, setActiveThumbIndex] = useState<number>(0);
 
-    // helpers
     const extractUrl = (maybe: any): string | null => {
         if (!maybe && maybe !== 0) return null;
         if (typeof maybe === "string") return maybe;
@@ -208,7 +180,6 @@ function VariantModalInner({ product, onClose }: { product: ProductFormData; onC
 
     const variants = Array.isArray(product.variants) ? product.variants : [];
 
-    // attribute options map
     const attributeOptions = useMemo(() => {
         const map: Record<string, string[]> = {};
         variants.forEach((v: any) => {
@@ -225,7 +196,6 @@ function VariantModalInner({ product, onClose }: { product: ProductFormData; onC
         return map;
     }, [variants]);
 
-    // attribute images map (key -> value -> [urls])
     const attributeImagesMap = useMemo(() => {
         const map: Record<string, Record<string, string[]>> = {};
         variants.forEach((v: any) => {
@@ -252,7 +222,6 @@ function VariantModalInner({ product, onClose }: { product: ProductFormData; onC
         return map;
     }, [variants]);
 
-    // find variant by selection
     function findVariantBySelection(sel: Record<string, string>) {
         if (!variants.length) return null;
         return variants.find((v: any) => {
@@ -262,7 +231,6 @@ function VariantModalInner({ product, onClose }: { product: ProductFormData; onC
         }) ?? null;
     }
 
-    // build thumbnails: variant images + attribute images (selected) + product images
     function buildThumbnails(forVariant?: any) {
         const set = new Set<string>();
         if (forVariant) {
@@ -343,7 +311,6 @@ function VariantModalInner({ product, onClose }: { product: ProductFormData; onC
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [JSON.stringify(attributeSelection)]);
 
-    // close on ESC
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
         window.addEventListener("keydown", onKey);
@@ -354,7 +321,6 @@ function VariantModalInner({ product, onClose }: { product: ProductFormData; onC
 
     const displayPrice = Number(selectedVariant?.price_per ?? product.price_per ?? 0);
     const displayPriceOf = selectedVariant?.price_of ?? product.price_of ?? null;
-    const displayStock = Number(selectedVariant?.stock ?? product.stock ?? 0);
 
     const formatter = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
     const formattedPricePer = formatter.format(displayPrice ?? 0);
@@ -384,7 +350,6 @@ function VariantModalInner({ product, onClose }: { product: ProductFormData; onC
         setMainImage(toSrc(raw));
     }
 
-    // Modal content (this will be portaled to document.body by VariantModalPortal)
     return (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center">
             <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onClose} />
@@ -411,7 +376,7 @@ function VariantModalInner({ product, onClose }: { product: ProductFormData; onC
                         </div>
 
                         <div className="flex gap-2 overflow-x-auto">
-                            {thumbnails.length > 0 ? thumbnails.map((t, i) => (
+                            {thumbnails.length > 0 ? thumbnails.map((t: string, i: number) => (
                                 <button key={i} onClick={() => onThumbClick(i)} className={`w-20 h-20 rounded overflow-hidden border ${i === activeThumbIndex ? "border-red-600" : "border-gray-200"}`}>
                                     <Image src={toSrc(t)} alt={`thumb-${i}`} width={80} height={80} className="object-cover w-full h-full" />
                                 </button>
@@ -489,32 +454,29 @@ function VariantModalInner({ product, onClose }: { product: ProductFormData; onC
     );
 }
 
-/* -------------------------
+/* =========================
    Export default Highlights (Swiper)
-   ------------------------- */
+   ========================= */
 export default function Highlights() {
     const { colors } = useTheme();
-    const [highlights, setHighlights] = useState<ProductFormData[]>([]);
+    const [offers, setOffers] = useState<ProductFormData[]>([]);
 
     useEffect(() => {
         const apiClient = setupAPIClient();
-        async function fetchHighlights() {
+        async function fetchOffers() {
             try {
                 const { data } = await apiClient.get(`/products/highlights`);
-                setHighlights(data);
+                setOffers(data);
             } catch (error) {
                 console.error(error);
             }
         }
-        fetchHighlights();
+        fetchOffers();
     }, []);
 
     return (
         <div className="container mx-auto px-4 py-8">
-            <h2
-                className="text-2xl font-bold mb-4"
-                style={{ color: colors?.titulo_posts_mais_vizualizados || "#000000" }}
-            >
+            <h2 className="text-2xl font-bold mb-4" style={{ color: colors?.titulo_posts_mais_vizualizados || "#000000" }}>
                 Destaques da loja
             </h2>
 
@@ -530,9 +492,9 @@ export default function Highlights() {
                 modules={[Navigation]}
                 className="swiper-container"
             >
-                {highlights.map((product) => (
+                {offers.map((product) => (
                     <SwiperSlide key={product.id}>
-                        <HighlightsCard product={product} />
+                        <OfferCard product={product} />
                     </SwiperSlide>
                 ))}
             </Swiper>

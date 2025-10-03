@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Ticket } from "lucide-react";
+import { Ticket, Info } from "lucide-react";
 import PromotionRulesModal from "./PromotionRulesModal";
 
 interface VariantPromotionsProps {
@@ -19,15 +19,13 @@ export default function VariantPromotions({ promotions, variantName }: VariantPr
     setModalOpen(true);
   };
 
-  if (!promotions || promotions.length === 0) return null;
-
   return (
     <div className="mt-4 border-t pt-4">
       <h3 className="text-lg font-bold mb-3">Promoções da Variante: <span className="text-blue-600">{variantName}</span></h3>
 
       <div className="space-y-3">
         {promotions.map((promo, index) => (
-          <div key={promo.id ?? index} className="bg-amber-50 border border-amber-200 rounded p-3">
+          <div key={index} className="bg-amber-50 border border-amber-200 rounded p-3">
             <div className="flex items-start">
               <div className="flex-shrink-0 mt-1">
                 <Ticket className="w-5 h-5 text-amber-600" />

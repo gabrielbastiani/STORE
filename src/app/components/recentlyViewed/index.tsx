@@ -1,38 +1,36 @@
-'use client';
+"use client";
 
+import React, { useEffect, useMemo, useState } from "react";
 import { setupAPIClient } from "@/services/api";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Navigation } from "swiper/modules";
 import "swiper/css";
 import "swiper/css/navigation";
-import { FiShoppingCart, FiX } from "react-icons/fi";
+import { FiShoppingCart } from "react-icons/fi";
 import { ProductFormData } from "Types/types";
 import { useTheme } from "@/app/contexts/ThemeContext";
 import { useCart } from "@/app/contexts/CartContext";
 import { createPortal } from "react-dom";
+import SpotBadgeCarousel from "@/app/components/category/SpotBadgeCarousel";
+import { collectSpotBadgesFromProductObject, fetchSpotBadgesFromApi, SpotBadge } from "@/utils/promotionUtils";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 const STORAGE_KEY = "recently_viewed";
 const MAX_ITEMS = 10;
 
-/* -------------------------
-   RecentlyViewedCard (layout original)
-   - se tiver variants -> botão "Ver opções" abre modal via portal
-   - se não -> botão "Adicionar" com quantidade
-   ------------------------- */
 function RecentlyViewedCard({ product }: { product: ProductFormData }) {
+    
     const { colors } = useTheme();
     const { addItem } = useCart();
     const [quantity, setQuantity] = useState<number>(1);
     const [adding, setAdding] = useState<boolean>(false);
     const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
 
-    const hasOffer = !!product.price_of && product.price_per! < product.price_of!;
+    const hasOffer = !!product.price_of && (product.price_per ?? 0) < (product.price_of ?? 0);
     const discountPercentage = hasOffer
-        ? Math.round((1 - product.price_per! / (product.price_of ?? product.price_per!)) * 100)
+        ? Math.round((1 - (product.price_per ?? 0) / (product.price_of ?? (product.price_per ?? 1))) * 100)
         : 0;
 
     const findPrimary = () => {
@@ -43,28 +41,57 @@ function RecentlyViewedCard({ product }: { product: ProductFormData }) {
     const primary = findPrimary();
     const imageSrc = primary ? (String(primary).startsWith("http") ? String(primary) : `${API_URL}/files/${primary}`) : "/placeholder.png";
 
-    const fmt = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format;
-    const formattedPricePer = fmt(product.price_per ?? 0);
-    const formattedPriceOf = product.price_of ? fmt(product.price_of) : null;
-    const formattedInstallment = fmt((product.price_per ?? 0) / 12);
-
     function handleDecrease() {
         setQuantity((q) => Math.max(1, q - 1));
     }
     function handleIncrease() {
         setQuantity((q) => q + 1);
     }
+
     async function handleAddToCart() {
         try {
             setAdding(true);
             await addItem(String(product.id), quantity);
             setQuantity(1);
-        } catch (error) {
-            console.error(error);
+        } catch (err) {
+            console.error("RecentlyViewedCard addItem error:", err);
         } finally {
             setAdding(false);
         }
     }
+
+    // --- SPOT badges logic via promotionUtils ---
+    // First try to collect embedded SPOT badges from product object
+    const embeddedSpotBadges = useMemo(() => collectSpotBadgesFromProductObject(product), [product]);
+    const [spotBadges, setSpotBadges] = useState<SpotBadge[]>(embeddedSpotBadges);
+
+    useEffect(() => {
+        let mounted = true;
+
+        (async () => {
+            // If embedded badges exist, use them (they are authoritative and avoid extra API calls)
+            if (embeddedSpotBadges && embeddedSpotBadges.length > 0) {
+                if (mounted) setSpotBadges(embeddedSpotBadges);
+                return;
+            }
+
+            // Otherwise, fetch from API only if we have a product id
+            if (!product?.id) {
+                if (mounted) setSpotBadges([]);
+                return;
+            }
+
+            try {
+                const fetched = await fetchSpotBadgesFromApi(String(product.id));
+                if (mounted) setSpotBadges(Array.isArray(fetched) ? fetched : []);
+            } catch (err) {
+                console.warn("fetchSpotBadgesFromApi failed:", err);
+                if (mounted) setSpotBadges([]);
+            }
+        })();
+
+        return () => { mounted = false; };
+    }, [product?.id, embeddedSpotBadges]);
 
     return (
         <>
@@ -72,6 +99,29 @@ function RecentlyViewedCard({ product }: { product: ProductFormData }) {
                 className="relative rounded shadow p-4 hover:shadow-lg transition flex flex-col h-[420px]"
                 style={{ background: colors?.fundo_posts_mais_vizualizados || "#e5e9ee" }}
             >
+                {/* Spot badges: show only if we have explicit SPOT badges (from product object or API) */}
+                {spotBadges && spotBadges.length > 0 && (
+                    spotBadges.length > 1 ? (
+                        <SpotBadgeCarousel badges={spotBadges} size={56} intervalMs={3000} />
+                    ) : (
+                        <div className="absolute top-3 right-3 flex items-end gap-2 z-20">
+                            <div className="w-12 h-12 bg-white p-1 rounded shadow flex items-center justify-center">
+                                {spotBadges[0].imageUrl ? (
+                                    <Image
+                                        src={spotBadges[0].imageUrl}
+                                        alt={spotBadges[0].title ?? "badge"}
+                                        width={48}
+                                        height={48}
+                                        className="object-contain"
+                                    />
+                                ) : (
+                                    <div className="text-xs text-amber-700 px-1">{spotBadges[0].title ?? "Selo"}</div>
+                                )}
+                            </div>
+                        </div>
+                    )
+                )}
+
                 {hasOffer && (
                     <div className="absolute top-2 left-2 bg-red-600 text-white text-xs uppercase font-bold px-2 py-1 rounded">
                         -{discountPercentage}% OFF
@@ -96,23 +146,23 @@ function RecentlyViewedCard({ product }: { product: ProductFormData }) {
                 </Link>
 
                 {product?.stock === 0 ? (
-                    <div
-                        className="flex items-center justify-center flex-1 bg-white disabled:opacity-50 text-red-600 font-semibold rounded transition"
-                    >
+                    <div className="flex items-center justify-center flex-1 bg-white disabled:opacity-50 text-red-600 font-semibold rounded transition">
                         Produto Indisponível
                     </div>
                 ) : (
                     <div className="mt-auto">
                         <div className="flex items-baseline">
                             <span className="text-xl font-bold text-red-600">
-                                {formattedPricePer}
+                                {(product.price_per ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                             </span>
-                            {hasOffer && formattedPriceOf && (
-                                <span className="text-sm text-gray-500 line-through ml-2">{formattedPriceOf}</span>
+                            {hasOffer && product.price_of && (
+                                <span className="text-sm text-gray-500 line-through ml-2">
+                                    {(product.price_of ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                                </span>
                             )}
                         </div>
                         <p className="text-xs text-gray-600 mb-4">
-                            12x de {formattedInstallment} sem juros no cartão
+                            12x de {((product.price_per ?? 0) / 12).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} sem juros no cartão
                         </p>
 
                         <div className="flex items-center">
@@ -153,18 +203,13 @@ function RecentlyViewedCard({ product }: { product: ProductFormData }) {
 }
 
 /* -------------------------
-   Portal wrapper for modal -> mounts modal in document.body
+   Portal + Modal inner (copiado/adaptado do padrão do seu projeto)
    ------------------------- */
 function RecentlyViewedVariantModalPortal({ product, onClose }: { product: ProductFormData; onClose: () => void; }) {
     if (typeof document === "undefined") return null;
     return createPortal(<RecentlyViewedVariantModalInner product={product} onClose={onClose} />, document.body);
 }
 
-/* -------------------------
-   Modal inner content (same pattern as other modals)
-   - responsive: fullscreen mobile / box desktop
-   - thumbnails built from variant/images/attributeImages
-   ------------------------- */
 function RecentlyViewedVariantModalInner({ product, onClose }: { product: ProductFormData; onClose: () => void; }) {
     const { addItem } = useCart();
     const [quantity, setQuantity] = useState<number>(1);
@@ -189,7 +234,7 @@ function RecentlyViewedVariantModalInner({ product, onClose }: { product: Produc
 
     const variants = Array.isArray(product.variants) ? product.variants : [];
 
-    const attributeOptions = useMemo(() => {
+    const attributeOptions = React.useMemo(() => {
         const map: Record<string, string[]> = {};
         variants.forEach((v: any) => {
             const attrs = v.attributes ?? v.variantAttribute ?? v.variantAttributes ?? [];
@@ -205,7 +250,7 @@ function RecentlyViewedVariantModalInner({ product, onClose }: { product: Produc
         return map;
     }, [variants]);
 
-    const attributeImagesMap = useMemo(() => {
+    const attributeImagesMap = React.useMemo(() => {
         const map: Record<string, Record<string, string[]>> = {};
         variants.forEach((v: any) => {
             const attrs = v.attributes ?? v.variantAttribute ?? v.variantAttributes ?? [];
@@ -270,7 +315,7 @@ function RecentlyViewedVariantModalInner({ product, onClose }: { product: Produc
         }
 
         const initSel: Record<string, string> = {};
-        Object.keys(attributeOptions).forEach((k) => { initSel[k] = attributeOptions[k][0]; });
+        Object.keys(attributeOptions).forEach(k => { initSel[k] = attributeOptions[k][0]; });
 
         let found = findVariantBySelection(initSel);
         if (found) {
@@ -326,7 +371,6 @@ function RecentlyViewedVariantModalInner({ product, onClose }: { product: Produc
 
     const displayPrice = Number(selectedVariant?.price_per ?? product.price_per ?? 0);
     const displayPriceOf = selectedVariant?.price_of ?? product.price_of ?? null;
-    const displayStock = Number(selectedVariant?.stock ?? product.stock ?? 0);
 
     const formatter = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
     const formattedPricePer = formatter.format(displayPrice ?? 0);
@@ -367,7 +411,7 @@ function RecentlyViewedVariantModalInner({ product, onClose }: { product: Produc
                         <div className="text-xs text-gray-600">Escolha opções e adicione ao carrinho</div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <button onClick={onClose} className="p-2 rounded hover:bg-gray-100"><FiX /></button>
+                        <button onClick={onClose} className="p-2 rounded hover:bg-gray-100">Fechar</button>
                     </div>
                 </div>
 
@@ -466,6 +510,7 @@ function RecentlyViewedVariantModalInner({ product, onClose }: { product: Produc
 export default function RecentlyViewed() {
     const { colors } = useTheme();
     const [products, setProducts] = useState<ProductFormData[]>([]);
+    const [loading, setLoading] = useState<boolean>(true);
 
     useEffect(() => {
         async function loadRecentlyViewed() {
@@ -478,16 +523,19 @@ export default function RecentlyViewed() {
 
             if (!ids.length) {
                 setProducts([]);
+                setLoading(false);
                 return;
             }
 
             const api = setupAPIClient();
             try {
                 const { data } = await api.post<ProductFormData[]>("/product/recently/views", { id: ids });
-                setProducts(data);
+                setProducts(data ?? []);
             } catch (err) {
                 console.error("Erro ao buscar visualizados recentemente", err);
                 setProducts([]);
+            } finally {
+                setLoading(false);
             }
         }
 
@@ -496,14 +544,13 @@ export default function RecentlyViewed() {
 
     return (
         <div className="container mx-auto px-4 py-8">
-            <h2
-                className="text-2xl font-bold mb-4"
-                style={{ color: colors?.titulo_posts_mais_vizualizados || "#000000" }}
-            >
+            <h2 className="text-2xl font-bold mb-4" style={{ color: colors?.titulo_posts_mais_vizualizados || "#000000" }}>
                 Visualizados recentemente
             </h2>
 
-            {products.length === 0 ? (
+            {loading ? (
+                <div className="text-center text-gray-500">Carregando...</div>
+            ) : products.length === 0 ? (
                 <p className="text-center text-gray-500">Nenhum produto visualizado.</p>
             ) : (
                 <Swiper

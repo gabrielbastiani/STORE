@@ -1,186 +1,124 @@
-"use client"
+"use client";
 
-import React, { useEffect, useState } from "react";
-import { Clock, Ticket, Gift, Info } from "lucide-react";
-import { Promotion } from "Types/types";
-import { toast } from "react-toastify";
-import { useRouter } from "next/navigation";
-import { lookupCatalog } from "@/services/catalogLookup";
-import PromotionRulesModal from "./PromotionRulesModal";
+import React, { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import { toast } from "react-toastify";
+import PromotionRulesModal from "./PromotionRulesModal";
+import { Promotion } from "Types/types";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
+
+/** Helpers **/
+const ensureFullImageUrl = (src?: string | null | undefined) => {
+  if (!src) return undefined;
+  const s = String(src).trim();
+  if (!s) return undefined;
+  if (s.startsWith("http://") || s.startsWith("https://")) return s;
+  const cleaned = s.replace(/^\/+/, "");
+  if (cleaned.startsWith("files/")) return `${API_URL}/${cleaned}`;
+  return `${API_URL}/files/${cleaned}`;
+};
+
+const extractImgSrcFromHtml = (html?: string | null) => {
+  if (!html || typeof html !== "string") return null;
+  const m = html.match(/<img[^>]+src=(?:'|")([^'"]+)(?:'|")/i);
+  return m ? m[1] : null;
+};
+
+type ScopeType = "product" | "variant";
 
 interface PromotionSectionProps {
-  promo: Promotion;
+  promo: Promotion | any;
+  scope?: ScopeType;
+  variantName?: string;
+  preloadedLookup?: any;
+  isMain?: boolean;
 }
 
-const ConditionLabel: Record<string, string> = {
-  FIRST_ORDER: "Se 1ª compra",
-  CART_ITEM_COUNT: "Se a quantidade de produtos no carrinho for",
-  UNIQUE_VARIANT_COUNT: "Se a quantidade de variantes únicas for",
-  CATEGORY: "Se a categoria",
-  ZIP_CODE: "Se CEP",
-  PRODUCT_CODE: "Se código do produto",
-  VARIANT_CODE: "Se código do produto variante",
-  STATE: "Se o estado no país for",
-  CATEGORY_ITEM_COUNT: "Se na categoria X a quantidade de produtos for X",
-  CATEGORY_VALUE: "Se para a categoria X o valor for",
-  BRAND_VALUE: "Se para a marca X o valor for",
-  VARIANT_ITEM_COUNT: "Se para o produto variante X a quantidade for",
-  PRODUCT_ITEM_COUNT: "Se para o produto X a quantidade for",
-  PERSON_TYPE: "Se tipo de cadastro (pessoa)",
-  USER: "Se o usuário for",
-  SUBTOTAL_VALUE: "Se valor subtotal",
-  TOTAL_VALUE: "Se valor total",
-};
-
-const ActionLabel: Record<string, string> = {
-  FIXED_VARIANT_DISCOUNT: "Ganhe {amount} R$ de desconto na unidade de cada produto variante {target}",
-  FIXED_PRODUCT_DISCOUNT: "Ganhe {amount} R$ de desconto na unidade de cada produto {target}",
-  FREE_VARIANT_ITEM: "Ganhe {qty} unidades do produto variante {target} de brinde",
-  FREE_PRODUCT_ITEM: "Ganhe {qty} unidades do produto {target} de brinde",
-  PERCENT_CATEGORY: "Ganhe {percent}% de desconto nos produtos da categoria {target}",
-  PERCENT_VARIANT: "Ganhe {percent}% de desconto nos produtos variantes {target}",
-  PERCENT_PRODUCT: "Ganhe {percent}% de desconto nos produtos {target}",
-  PERCENT_BRAND_ITEMS: "Percentual de desconto de acordo com marca/fabricante",
-  PERCENT_ITEM_COUNT: "Percentual de desconto em {qty} unidades de produtos {target}",
-  PERCENT_EXTREME_ITEM: "Percentual de desconto em {qty} unidades do produto de menor ou maior valor",
-  PERCENT_SHIPPING: "Percentual de desconto no valor do frete",
-  PERCENT_SUBTOTAL: "Percentual de desconto no valor subtotal (soma dos produtos)",
-  PERCENT_TOTAL_NO_SHIPPING: "Percentual de desconto no valor total (sem considerar o frete)",
-  PERCENT_TOTAL_PER_PRODUCT: "Percentual de desconto no valor total (aplicado por produto)",
-  FIXED_BRAND_ITEMS: "Valor de desconto em {qty} produtos de acordo com marca/fabricante",
-  FIXED_SHIPPING: "Valor de desconto no valor do frete",
-  FIXED_SUBTOTAL: "Valor de desconto no valor subtotal (soma dos produtos)",
-  FIXED_TOTAL_NO_SHIPPING: "Valor de desconto no valor total (sem considerar o frete)",
-  FIXED_TOTAL_PER_PRODUCT: "Valor de desconto no valor total (aplicado por produto)",
-  MAX_SHIPPING_DISCOUNT: "Valor máximo de frete",
-};
-
-export default function PromotionSection({ promo }: PromotionSectionProps) {
-  const router = useRouter();
+export default function PromotionSection({
+  promo,
+  scope = "product",
+  variantName,
+  preloadedLookup,
+  isMain = false,
+}: PromotionSectionProps) {
   const [modalOpen, setModalOpen] = useState(false);
-  const [preLookup, setPreLookup] = useState<any>(undefined);
   const [timeLeft, setTimeLeft] = useState<string | null>(null);
 
-  const getTimeLeft = (endDate?: string) => {
-    if (!endDate) return null;
+  if (!promo) return null;
 
-    const end = new Date(endDate);
-    const now = new Date();
-    const diffMs = end.getTime() - now.getTime();
+  // normalize arrays
+  const badgesRaw: any[] = Array.isArray(promo?.badges) ? promo.badges : [];
+  const displaysRaw: any[] = Array.isArray(promo?.displays) ? promo.displays : [];
+  const coupons: any[] = Array.isArray(promo?.coupons) ? promo.coupons : [];
 
-    if (diffMs <= 0) return "Expirado";
+  // Build lists of display images by type
+  const spotDisplayImages = useMemo(() => {
+    const imgs: string[] = [];
+    for (const d of displaysRaw) {
+      const type = (d?.type ?? "").toString().toUpperCase();
+      if (type !== "SPOT") continue;
+      // prefer explicit image field if present, else parse HTML
+      const explicit = d?.imageUrl ?? d?.image ?? d?.img ?? null;
+      let src = explicit ?? null;
+      if (!src) src = extractImgSrcFromHtml(d?.content ?? d?.html ?? "");
+      const normalized = ensureFullImageUrl(src ?? undefined);
+      if (normalized) imgs.push(normalized);
+    }
+    return imgs;
+  }, [displaysRaw]);
 
-    const hours = Math.floor(diffMs / (1000 * 60 * 60));
-    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  const productPageDisplayImages = useMemo(() => {
+    const imgs: string[] = [];
+    for (const d of displaysRaw) {
+      const type = (d?.type ?? "").toString().toUpperCase();
+      if (type !== "PRODUCT_PAGE") continue;
+      const explicit = d?.imageUrl ?? d?.image ?? d?.img ?? null;
+      let src = explicit ?? null;
+      if (!src) src = extractImgSrcFromHtml(d?.content ?? d?.html ?? "");
+      const normalized = ensureFullImageUrl(src ?? undefined);
+      if (normalized) imgs.push(normalized);
+    }
+    return imgs;
+  }, [displaysRaw]);
 
-    return `${hours}h ${minutes}m`;
-  };
+  // Filter badges to show on PRODUCT_PAGE: exclude those that are actually SPOT images
+  const productPageBadges = useMemo(() => {
+    const out: any[] = [];
+    for (const b of badgesRaw) {
+      const img = ensureFullImageUrl(b?.imageUrl ?? b?.image ?? b?.img ?? undefined);
+      // if badge image equals a SPOT display image -> exclude for product page
+      if (img && spotDisplayImages.includes(img)) continue;
+      out.push({ ...b, imageUrl: img ?? undefined });
+    }
+    return out;
+  }, [badgesRaw, spotDisplayImages]);
+
+  // For compact "badges displayed on product page", we use productPageBadges.
+  // For spots (cards) we'll use displays of type SPOT and badges from promotions ONLY if
+  // that promotion contains SPOT displays (handled on Cards component).
+
+  // compute hasProductPageDisplay
+  const hasProductPageDisplay = displaysRaw.some((d: any) => (d?.type ?? "").toString().toUpperCase() === "PRODUCT_PAGE");
 
   useEffect(() => {
-    if (!promo?.endDate) {
-      setTimeLeft(null);
-      return;
-    }
-
-    const updateTimeLeft = () => {/* @ts-ignore */
-      setTimeLeft(getTimeLeft(promo.endDate));
+    const ed = promo?.endDate ?? promo?.end_date ?? null;
+    const getTimeLeft = (endDate?: string | null) => {
+      if (!endDate) return null;
+      const end = new Date(endDate);
+      const now = new Date();
+      const diffMs = end.getTime() - now.getTime();
+      if (diffMs <= 0) return "Expirado";
+      const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+      return days > 0 ? `${days}d ${hours}h` : `${hours}h ${minutes}m`;
     };
 
-    updateTimeLeft();
-    const intervalId = setInterval(updateTimeLeft, 60000);
-
-    return () => clearInterval(intervalId);
-  }, [promo?.endDate]);
-
-  useEffect(() => {
-    let mounted = true;
-
-    (async () => {
-      if (!promo) return;
-
-      const productIds: string[] = [];
-      const variantIds: string[] = [];
-
-      const collectIds = (obj: any) => {
-        if (!obj || typeof obj !== 'object') return;
-
-        if (Array.isArray(obj)) {
-          obj.forEach(collectIds);
-          return;
-        }
-
-        if (obj.productIds && Array.isArray(obj.productIds)) {
-          productIds.push(...obj.productIds);
-        }
-
-        if (obj.variantIds && Array.isArray(obj.variantIds)) {
-          variantIds.push(...obj.variantIds);
-        }
-
-        Object.values(obj).forEach(collectIds);
-      };
-
-      (promo.conditions || []).forEach(collectIds);
-      (promo.actions || []).forEach(collectIds);
-      (promo.displays || []).forEach(collectIds);
-
-      const uniqueProductIds = [...new Set(productIds)];
-      const uniqueVariantIds = [...new Set(variantIds)];
-
-      if (uniqueProductIds.length === 0 && uniqueVariantIds.length === 0) {
-        if (mounted) {
-          setPreLookup(undefined);
-        }
-        return;
-      }
-
-      try {
-        const res = await lookupCatalog({
-          productIds: uniqueProductIds,
-          variantIds: uniqueVariantIds
-        });
-
-        const productsMap: Record<string, string> = {};
-        res.products.forEach(p => {
-          if (p.name) productsMap[p.id] = p.name;
-        });
-
-        const variantsMap: Record<string, { name?: string; sku?: string }> = {};
-        res.variants.forEach(v => {
-          variantsMap[v.id] = {
-            name: v.name || undefined,
-            sku: v.sku || undefined
-          };
-        });
-
-        if (mounted) {
-          setPreLookup({
-            products: productsMap,
-            variants: variantsMap
-          });
-        }
-      } catch (e) {
-        console.error("Falha ao carregar nomes de produtos/variantes", e);
-        if (mounted) {
-          setPreLookup(undefined);
-        }
-      }
-    })();
-
-    return () => { mounted = false; };
-  }, [promo]);
-
-  const mapProduct = (id: string) => {
-    return preLookup?.products?.[id] || id;
-  };
-
-  const mapVariant = (id: string) => {
-    const variant = preLookup?.variants?.[id];
-    return variant?.name || variant?.sku || id;
-  };
+    setTimeLeft(getTimeLeft(ed));
+    const id = setInterval(() => setTimeLeft(getTimeLeft(ed)), 60_000);
+    return () => clearInterval(id);
+  }, [promo?.endDate, promo?.end_date]);
 
   const copyToClipboard = (code?: string) => {
     if (!code) return toast.error("Cupom inválido");
@@ -190,278 +128,133 @@ export default function PromotionSection({ promo }: PromotionSectionProps) {
     );
   };
 
-  const humanizeCondition = (condition: any) => {
-    const type = condition.type;
-    const operator = condition.operator;
-
-    const value = condition.value
-      ? typeof condition.value === 'string'
-        ? JSON.parse(condition.value)
-        : condition.value
-      : {};
-
-    const baseText = ConditionLabel[type] || type;
-
-    switch (type) {
-      case 'PRODUCT_CODE':
-        const productNames = (value.productIds || [])
-          .map(mapProduct)
-          .join(', ');
-        return `${baseText}: ${productNames}`;
-
-      case 'VARIANT_CODE':
-        const variantNames = (value.variantIds || [])
-          .map(mapVariant)
-          .join(', ');
-        return `${baseText}: ${variantNames}`;
-
-      case 'STATE':
-        return `${baseText}: ${(value.states || []).join(', ')}`;
-
-      default:
-        return `${baseText}${operator ? ` (${operator})` : ''}${Object.keys(value).length ? `: ${JSON.stringify(value)}` : ''}`;
-    }
-  };
-
-  const humanizeAction = (action: any) => {
-    const type = action.type;
-
-    const params = action.params
-      ? typeof action.params === 'string'
-        ? JSON.parse(action.params)
-        : action.params
-      : {};
-
-    let baseText = ActionLabel[type] || type;
-
-    baseText = baseText
-      .replace('{percent}', params.percent || '?')
-      .replace('{amount}', params.amount || '?')
-      .replace('{qty}', params.qty || '?');
-
-    switch (type) {
-      case 'PERCENT_PRODUCT':
-      case 'FIXED_PRODUCT_DISCOUNT':
-        const productNames = (params.productIds || [])
-          .map(mapProduct)
-          .join(', ');
-        return baseText.replace('{target}', productNames);
-
-      case 'PERCENT_VARIANT':
-      case 'FIXED_VARIANT_DISCOUNT':
-      case 'FREE_VARIANT_ITEM':
-        const variantNames = (params.variantIds || [])
-          .map(mapVariant)
-          .join(', ');
-        return baseText.replace('{target}', variantNames);
-
-      case 'FREE_PRODUCT_ITEM':
-        const freeProductNames = (params.productIds || [])
-          .map(mapProduct)
-          .join(', ');
-        return baseText.replace('{target}', freeProductNames);
-
-      default:
-        return baseText;
-    }
-  };
-
-  if (!promo) return null;
-
-  const start = promo.startDate ? new Date(promo.startDate) : null;
-  const end = promo.endDate ? new Date(promo.endDate) : null;
-  const isActive = timeLeft && timeLeft !== "Expirado";
-
-  const coupons: any[] = Array.isArray(promo.coupons) ? promo.coupons : [];
-  const displays: any[] = Array.isArray(promo.displays) ? promo.displays : [];
-  const badges: any[] = Array.isArray(promo.badges) ? promo.badges : [];
-  const conditions: any[] = Array.isArray(promo.conditions) ? promo.conditions : [];
-  const actions: any[] = Array.isArray(promo.actions) ? promo.actions : [];
+  const headerClass = isMain ? "border-2 border-amber-500 shadow-md" : "border border-amber-200";
+  const headerLabel = scope === "variant" ? (variantName ? `VARIANTE — ${variantName}` : "VARIANTE") : "PRODUTO";
 
   return (
     <>
-      <section className="bg-gradient-to-r from-amber-50 via-white to-amber-50 border border-amber-200 rounded-lg p-4 shadow-sm mb-6">
-        {/* Cabeçalho com etiqueta de promoção do produto */}
-        <header className="flex items-center mb-3">
-          <div className="bg-amber-500 text-white px-2 py-1 rounded text-xs font-bold mr-2">
-            PROMOÇÃO DO PRODUTO PRINCIPAL
+      <section className={`bg-gradient-to-r from-amber-50 via-white to-amber-50 rounded-lg p-4 ${headerClass}`}>
+        <header className="flex items-center mb-3 justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`px-2 py-1 rounded text-xs font-bold ${scope === "variant" ? "bg-purple-600 text-white" : "bg-amber-500 text-white"}`}>
+              {headerLabel}
+            </div>
+
+            <div className="flex flex-col">
+              <h3 className="text-lg font-extrabold text-amber-800">{promo.name}</h3>
+              {promo.description && <div className="text-sm text-slate-700 mt-1 max-w-prose">{promo.description}</div>}
+            </div>
           </div>
-          <h3 className="text-xl font-extrabold text-amber-800">{promo.name}</h3>
+
+          <div className="text-right">
+            <div className="text-xs text-gray-500">Acaba em</div>
+            <div className="text-sm font-semibold text-amber-800">{timeLeft ?? "—"}</div>
+            <button
+              onClick={() => setModalOpen(true)}
+              className="mt-2 inline-flex items-center gap-2 text-sm bg-amber-600 text-white px-3 py-1 rounded"
+            >
+              Ver regras
+            </button>
+          </div>
         </header>
 
-        <div className="flex gap-4">
-          <div className="flex-shrink-0 w-20">
-            <div className="w-16 h-16 rounded-full bg-amber-600 text-white flex items-center justify-center">
-              <Ticket className="w-7 h-7" />
+        {/* PRODUCT_PAGE: mostrar title/content + badges (imagens) */}
+        {hasProductPageDisplay ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+            <div className="md:col-span-2">
+              {displaysRaw.map((d: any, idx: number) => {
+                if ((d.type ?? "").toString().toUpperCase() !== "PRODUCT_PAGE") return null;
+                return (
+                  <article key={d.id ?? idx} className="mb-3 bg-white p-3 border rounded">
+                    {d.title && <h4 className="font-semibold text-amber-800">{d.title}</h4>}
+                    <div className="mt-2 text-sm text-gray-700" dangerouslySetInnerHTML={{ __html: d.content ?? "" }} />
+                  </article>
+                );
+              })}
             </div>
-          </div>
 
-          <div className="flex-1">
-            {/* Badges */}
-            {badges.length > 0 && (
-              <div className="mt-4 flex items-center gap-3 flex-wrap">
-                {badges.map((b: any) => (
-                  <div key={b.id || b.title} className="flex items-center gap-2 p-2 bg-white border rounded-md">
+            <div className="flex flex-col gap-2">
+              {/* Only show badges relevant to product page (we excluded SPOT images above) */}
+              {productPageBadges.length > 0 ? (
+                productPageBadges.map((b: any, i: number) => (
+                  <div key={b.id ?? i} className="p-2 bg-white border rounded flex items-center gap-2">
                     {b.imageUrl ? (
                       <Image
-                        src={`${API_URL}/files/${b.imageUrl}`}
-                        alt={b.title}
-                        width={100}
-                        height={100}
-                        className="w-10 h-10 object-cover rounded"
+                        src={b.imageUrl}
+                        alt={b.title ?? `badge-${i}`}
+                        width={120}
+                        height={120}
+                        className="w-20 h-20 object-contain"
                       />
                     ) : (
-                      <div className="w-10 h-10 rounded bg-amber-100 flex items-center justify-center text-amber-700">
-                        <Gift className="w-4 h-4" />
-                      </div>
+                      <div className="w-20 h-20 bg-amber-100" />
                     )}
-                    <div className="text-sm font-medium text-slate-800">{b.title}</div>
+                    <div className="text-xs text-amber-700">{b.title}</div>
                   </div>
-                ))}
-              </div>
-            )}
-            <div className="flex items-start justify-between">
-              <div>
-                {promo.description && (
-                  <p className="text-sm text-gray-700 mt-1 max-w-prose">{promo.description}</p>
-                )}
-
-                <div className="flex flex-wrap gap-2 mt-3">
-                  <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium ${isActive ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
-                    {isActive ? (
-                      <>
-                        <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                        Ativa
-                      </>
-                    ) : (
-                      <>
-                        <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                        Expirada
-                      </>
-                    )}
-                  </div>
-
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700">
-                    <Ticket className="w-4 h-4" />
-                    {promo.hasCoupon ? "Requer cupom" : "Promoção automática"}
-                  </div>
-
-                  {timeLeft && (
-                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                      <Clock className="w-4 h-4" />
-                      {timeLeft}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <button
-                  onClick={() => setModalOpen(true)}
-                  className="inline-flex items-center gap-1 text-sm text-amber-700 hover:text-amber-900"
-                >
-                  <Info className="w-4 h-4" /> Detalhes
-                </button>
-              </div>
+                ))
+              ) : (
+                <div className="text-xs text-gray-500">Sem etiquetas</div>
+              )}
+            </div>
+          </div>
+        ) : (
+          // Resumo e badges compactos (se existirem) — somente productPageBadges aqui também
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-2">
+              {displaysRaw[0] && (displaysRaw[0].type ?? "").toString().toUpperCase() === "PRODUCT_PAGE" ? (
+                <div className="text-sm text-gray-700" dangerouslySetInnerHTML={{ __html: displaysRaw[0].content ?? "" }} />
+              ) : (
+                <div className="text-sm text-gray-600">Sem conteúdo adicional.</div>
+              )}
             </div>
 
-            {/* Displays */}
-            {displays.length > 0 && (
-              <div className="mt-4 grid gap-2">
-                {displays.slice(0, 2).map((d: any) => (
-                  <article key={d.id || d.title} className="p-3 bg-white border rounded">
-                    <header className="flex items-center justify-between">
-                      <h4 className="font-semibold text-sm text-amber-800">{d.title}</h4>
-                    </header>
-
-                    <div className="mt-2 text-sm text-gray-700">
-                      {d.content ? (
-                        <div dangerouslySetInnerHTML={{ __html: d.content }} />
-                      ) : (
-                        <em>Sem descrição detalhada</em>
-                      )}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-
-            {/* Condições resumidas */}
-            {conditions.length > 0 && (
-              <div className="mt-4">
-                <h4 className="text-sm font-semibold text-gray-800">Condições:</h4>
-                <ul className="mt-1 space-y-1">
-                  {conditions.slice(0, 3).map((c, i) => (
-                    <li key={c.id || i} className="text-xs text-gray-600 flex items-start">
-                      <span className="mr-1">•</span>
-                      <span className="flex-1">{humanizeCondition(c)}</span>
-                    </li>
-                  ))}
-                  {conditions.length > 3 && (
-                    <li className="text-xs text-gray-500">
-                      + {conditions.length - 3} condições...
-                    </li>
-                  )}
-                </ul>
-              </div>
-            )}
-
-            {/* Ações resumidas */}
-            {actions.length > 0 && (
-              <div className="mt-2">
-                <h4 className="text-sm font-semibold text-gray-800">Benefícios:</h4>
-                <ul className="mt-1 space-y-1">
-                  {actions.slice(0, 3).map((a, i) => (
-                    <li key={a.id || i} className="text-xs text-gray-600 flex items-start">
-                      <span className="mr-1">•</span>
-                      <span className="flex-1">{humanizeAction(a)}</span>
-                    </li>
-                  ))}
-                  {actions.length > 3 && (
-                    <li className="text-xs text-gray-500">
-                      + {actions.length - 3} benefícios...
-                    </li>
-                  )}
-                </ul>
-              </div>
-            )}
-
-            {/* Cupons */}
-            {coupons.length > 0 && (
-              <div className="mt-4 bg-white p-3 border rounded">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-semibold text-slate-800">Códigos de Cupom</div>
-                  <div className="text-xs text-gray-500">Use no carrinho</div>
-                </div>
-
-                <div className="mt-3 flex gap-3 flex-wrap">
-                  {coupons.map((c: any, i: number) => (
-                    <div key={c.id || c.code || i} className="flex items-center gap-3 border rounded p-3 bg-slate-50">
-                      <div className="font-mono text-sm text-slate-800">{c.code}</div>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => copyToClipboard(c.code)}
-                          className="px-3 py-1 text-xs bg-amber-600 text-white rounded"
-                        >
-                          Copiar
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            <div>
+              {productPageBadges.length > 0 ? (
+                productPageBadges.slice(0, 3).map((b: any, i: number) => (
+                  <div key={b.id ?? i} className="mb-2 p-2 bg-white border rounded flex items-center gap-2">
+                    {b.imageUrl ? (
+                      <Image
+                        src={b.imageUrl}
+                        alt={b.title ?? `badge-${i}`}
+                        width={80}
+                        height={80}
+                        className="w-14 h-14 object-contain"
+                      />
+                    ) : (
+                      <div className="w-14 h-14 bg-amber-100" />
+                    )}
+                    <div className="text-xs text-amber-700">{b.title}</div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-xs text-gray-500">Sem etiquetas</div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Cupons resumidos */}
+        {coupons.length > 0 && (
+          <div className="mt-4 bg-white p-3 border rounded">
+            <div className="text-xs text-amber-700 font-medium mb-2">Cupons</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {coupons.map((c: any, i: number) => (
+                <div key={c.id ?? i} className="p-2 bg-slate-50 border rounded flex justify-between items-center">
+                  <div className="font-mono text-sm">{c.code}</div>
+                  <button onClick={() => copyToClipboard(c.code)} className="px-2 py-1 bg-amber-600 text-white rounded text-xs">Copiar</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
 
-      {/* Modal de regras completo */}
       <PromotionRulesModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         promo={promo}
-        preloadedLookup={preLookup}
+        preloadedLookup={preloadedLookup}
+        variantName={variantName}
       />
     </>
   );

@@ -33,9 +33,6 @@ import ProductQuestions from "@/app/components/pageProduct/productQuestions";
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 const STORAGE_KEY = "recently_viewed";
 
-/**
- * ProductPage completo — integra sua lógica original e corrige favoritos/localStorage.
- */
 export default function ProductPage({ params }: { params: Promise<{ productSlug: string }> }) {
 
   const router = useRouter();

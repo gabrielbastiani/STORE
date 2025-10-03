@@ -115,6 +115,7 @@ export interface ProductSummary {
 }
 
 export interface ProductFormData {
+  promotions: any;
   created_at?: string | number | Date;
   primaryImage?: string;
   featuredProducts?: ProductSummary[]; // corrigido: opcional
@@ -185,6 +186,7 @@ export const initialFormData: ProductFormData = {
   newImages: [],
   mainPromotion_id: undefined,
   buyTogether_id: undefined,
+  promotions: [],
   existingImages: [],
   featuredProducts: [],
   primaryImage: "",

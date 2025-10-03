@@ -5,6 +5,7 @@ import { Info } from "lucide-react";
 import PromotionRulesModal from "./PromotionRulesModal";
 import { lookupCatalog } from "@/services/catalogLookup";
 import { Promotion, VariantFormData, ProductFormData } from "Types/types";
+import usePromotionsForProduct from "./hooksPromotions/usePromotionsForProduct";
 
 interface AttributeImage {
   value: string;
@@ -45,41 +46,14 @@ export default function VariantsSelector({
   const [preLookup, setPreLookup] = useState<PreloadedLookupNormalized>(undefined);
   const [timeLeft, setTimeLeft] = useState<string | null>(null);
 
-  // ---------- mergeVariantPromotion: cria a promoção efetiva para a variante ----------
-  const mergeVariantPromotion = (variant: any): Promotion | null => {
-    if (!variant) return null;
-
-    const base = variant.mainPromotion ?? null;
-
-    if (!base) {
-      // Se a própria variante já carrega a promoção
-      const direct: Promotion = {
-        ...variant,
-        conditions: Array.isArray(variant.conditions) ? variant.conditions : [],
-        actions: Array.isArray(variant.actions) ? variant.actions : [],
-        displays: Array.isArray(variant.displays) ? variant.displays : [],
-        coupons: Array.isArray(variant.coupons) ? variant.coupons : [],
-        badges: Array.isArray(variant.badges) ? variant.badges : [],
-      } as Promotion;
-      return direct;
-    }
-
-    // Mesclar: valores/arrays da variante têm prioridade quando presentes
-    const merged: Promotion = {
-      ...base,
-      ...variant,
-      conditions: Array.isArray(variant.conditions) && variant.conditions.length ? variant.conditions : (Array.isArray(base.conditions) ? base.conditions : []),
-      actions: Array.isArray(variant.actions) && variant.actions.length ? variant.actions : (Array.isArray(base.actions) ? base.actions : []),
-      displays: Array.isArray(variant.displays) && variant.displays.length ? variant.displays : (Array.isArray(base.displays) ? base.displays : []),
-      coupons: Array.isArray(variant.coupons) && variant.coupons.length ? variant.coupons : (Array.isArray(base.coupons) ? base.coupons : []),
-      badges: Array.isArray(variant.badges) && variant.badges.length ? variant.badges : (Array.isArray(base.badges) ? base.badges : []),
-    } as Promotion;
-
-    return merged;
-  };
-  // -------------------------------------------------------------------------------
-
-  const mergedVariantPromo = useMemo(() => mergeVariantPromotion(selectedVariant), [selectedVariant]);
+  // Hook: traz promoções da API (merge já feito no hook)
+  const {
+    loading: promosLoading,
+    productPromotions,
+    variantPromotions,
+    variantMainPromotions,
+    apiFetched
+  } = usePromotionsForProduct(product?.id, selectedVariant?.id, selectedVariant?.sku);
 
   // Prefetch catalog names (evita requests extras dentro do modal)
   useEffect(() => {
@@ -121,18 +95,66 @@ export default function VariantsSelector({
     };
   }, [selectedVariant?.id, product?.id]);
 
-  // Função para calcular tempo restante de uma promoção
-  const getTimeLeft = (endDate?: string) => {
-    if (!endDate) return null;
-    const end = new Date(endDate);
-    const now = new Date();
-    const diffMs = end.getTime() - now.getTime();
-    if (diffMs <= 0) return "Expirado";
-    const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    return (days > 0) ? `${days}d ${hours}h` : `${hours}h ${minutes}m`;
+  // util: checa se uma promoção é útil (tem displays/actions/badges ou id)
+  const isUsefulPromotion = (p: any) => {
+    if (!p) return false;
+    if (typeof p.id === "string" && p.id) return true;
+    if (Array.isArray(p.displays) && p.displays.length > 0) return true;
+    if (Array.isArray(p.actions) && p.actions.length > 0) return true;
+    if (Array.isArray(p.badges) && p.badges.length > 0) return true;
+    return false;
   };
+
+  // mergedVariantPromo: preferir (na ordem):
+  // 1) variantMainPromotions[selectedVariant.id] (API, quando apiFetched e útil)
+  // 2) variantPromotions[selectedVariant.id][0] (API)
+  // 3) selectedVariant.mainPromotion (embedded)
+  // 4) selectedVariant.variantPromotions[0] (embedded)
+  // 5) null
+  const mergedVariantPromo: Promotion | null = useMemo(() => {
+    if (!selectedVariant) return null;
+
+    // 1) if API fetched and variantMainPromotions has a useful item, return it
+    if (apiFetched) {
+      const apiMain = variantMainPromotions?.[selectedVariant.id];
+      if (isUsefulPromotion(apiMain)) return apiMain as Promotion;
+
+      // 2) check variantPromotions map from API
+      const apiVarProms = variantPromotions?.[selectedVariant.id] ?? [];
+      if (Array.isArray(apiVarProms) && apiVarProms.length > 0) {
+        return apiVarProms[0] as Promotion;
+      }
+    }
+
+    // 3) fallback to embedded mainPromotion on the selectedVariant (if present)
+    // @ts-ignore
+    if ((selectedVariant as any).mainPromotion && isUsefulPromotion((selectedVariant as any).mainPromotion)) {
+      // @ts-ignore
+      return (selectedVariant as any).mainPromotion as Promotion;
+    }
+
+    // 4) fallback to embedded variantPromotions array on the selectedVariant
+    // @ts-ignore
+    if (Array.isArray((selectedVariant as any).variantPromotions) && (selectedVariant as any).variantPromotions.length) {
+      // @ts-ignore
+      return (selectedVariant as any).variantPromotions[0] as Promotion;
+    }
+
+    return null;
+  }, [apiFetched, variantMainPromotions, variantPromotions, selectedVariant]);
+
+  // obtenção de displays (segura)
+  const displays = useMemo(() => {
+    if (!mergedVariantPromo) return [];
+    try {
+      const d = (mergedVariantPromo as any).displays;
+      if (Array.isArray(d)) return d;
+      if (typeof d === "string") return JSON.parse(d);
+      return [];
+    } catch {
+      return [];
+    }
+  }, [mergedVariantPromo]);
 
   // Atualizar tempo restante periodicamente baseado na promoção mesclada
   useEffect(() => {
@@ -141,22 +163,21 @@ export default function VariantsSelector({
       return;
     }
 
-    const updateTimeLeft = () => {
-      // @ts-ignore
-      setTimeLeft(getTimeLeft(mergedVariantPromo.endDate));
+    const getTimeLeft = () => {
+      const end = new Date(mergedVariantPromo.endDate || '');
+      const now = new Date();
+      const diffMs = end.getTime() - now.getTime();
+      if (diffMs <= 0) return "Expirado";
+      const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+      return (days > 0) ? `${days}d ${hours}h` : `${hours}h ${minutes}m`;
     };
 
-    updateTimeLeft();
-    const intervalId = setInterval(updateTimeLeft, 60000); // Atualiza a cada minuto
-
+    setTimeLeft(getTimeLeft());
+    const intervalId = setInterval(() => setTimeLeft(getTimeLeft()), 60000);
     return () => clearInterval(intervalId);
   }, [mergedVariantPromo?.endDate]);
-
-  // Displays da promoção (merge)
-  const displays = useMemo(() => {
-    if (!mergedVariantPromo) return [];
-    return Array.isArray((mergedVariantPromo as any).displays) ? (mergedVariantPromo as any).displays : [];
-  }, [mergedVariantPromo]);
 
   // Cálculo simples de savings entre price_of e price_per (opcional)
   const savings = useMemo(() => {
@@ -200,7 +221,7 @@ export default function VariantsSelector({
                     {displays[0].title ?? "Promoção da variante"}
                   </div>
 
-                  {/* NOVA ETIQUETA: mostra SKU/nome da variante e destaca que é promoção de variante */}
+                  {/* ETIQUETA: mostra SKU/nome da variante */}
                   {selectedVariant && (
                     <div className="ml-2 inline-flex items-center gap-2">
                       <span className="text-xs bg-purple-600 text-white px-2 py-1 rounded-full font-medium">
@@ -238,14 +259,14 @@ export default function VariantsSelector({
         </div>
       )}
 
-      {/* Se há promoção mas sem displays: card compacto */}
+      {/* Se não há displays, mas existe promo -> card compacto */}
       {mergedVariantPromo && displays.length === 0 && (
         <div className="bg-amber-50 border rounded-lg p-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-md bg-amber-100 flex items-center justify-center border border-amber-200">
-              <Info className="w-5 h-5 text-amber-700" />
+            <div className="flex-shrink-0 mt-1">
+              <Info className="w-5 h-5 text-amber-600" />
             </div>
-            <div>
+            <div className="ml-3 flex-1">
               <div className="flex items-center gap-2">
                 <div className="font-medium text-amber-900">Promoção aplicável</div>
                 {selectedVariant && (
@@ -271,14 +292,7 @@ export default function VariantsSelector({
         </div>
       )}
 
-      {/* Nota quando não há promoção */}
-      {!mergedVariantPromo && (
-        <div className="text-sm text-gray-600">
-          Selecionando opções você verá promoções específicas da variante (se houver).
-        </div>
-      )}
-
-      {/* Seletor de atributos */}
+      {/* Seletor de atributos (renderização original inalterada) */}
       {Object.entries(allOptions).map(([key, values]) => (
         <div key={key} className="space-y-2">
           <div className="flex items-center justify-between">
@@ -305,24 +319,17 @@ export default function VariantsSelector({
                   }}
                   disabled={!isAvailable}
                   aria-pressed={isSelected}
-                  className={`
-                    relative flex items-center justify-center 
-                    border rounded-lg text-sm font-medium transition-colors
+                  className={`relative flex items-center justify-center border rounded-lg text-sm font-medium transition-colors
                     ${isSelected
                       ? "border-blue-600 bg-blue-50 text-blue-600 shadow-sm"
                       : isAvailable
                         ? "border-gray-300 hover:border-gray-400 bg-white hover:bg-gray-50"
                         : "border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed"
                     }
-                    ${attrImage ? "p-0 w-12 h-12" : "px-4 py-2"}
-                  `}
+                    ${attrImage ? "p-0 w-12 h-12" : "px-4 py-2"}`}
                 >
                   {attrImage ? (
-                    <img
-                      src={attrImage}
-                      alt={value}
-                      className={`w-full h-full object-cover rounded-md ${!isAvailable ? "opacity-40" : ""}`}
-                    />
+                    <img src={attrImage} alt={value} className={`w-full h-full object-cover rounded-md ${!isAvailable ? "opacity-40" : ""}`} />
                   ) : (
                     <>
                       {value}
@@ -340,7 +347,7 @@ export default function VariantsSelector({
       <PromotionRulesModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        promo={selectedVariant ?? mergedVariantPromo ?? null}
+        promo={mergedVariantPromo ?? null}
         preloadedLookup={preLookup ?? undefined}
         variantName={selectedVariant?.sku ?? undefined}
       />

@@ -1,4 +1,3 @@
-// components/category/CategoryFilters.tsx - ATUALIZADO
 'use client'
 
 import React, { useEffect, useState } from 'react'
@@ -24,26 +23,21 @@ type FilterItem = {
 export default function CategoryFilters({
     slug,
     selectedFilters,
-    onChange,
-    searchMode = false
+    onChange
 }: {
     slug: string,
     selectedFilters: Record<string, string[]>,
-    onChange: (next: Record<string, string[]>) => void,
-    searchMode?: boolean
+    onChange: (next: Record<string, string[]>) => void
 }) {
     const [groups, setGroups] = useState<any[]>([])
     const [loading, setLoading] = useState(false)
     const [pendingFilters, setPendingFilters] = useState<Record<string, string[]>>({})
     const [isFilterChanged, setIsFilterChanged] = useState(false)
+
+    // Slider local state (for UI only)
     const [sliderState, setSliderState] = useState<Record<string, { min: number; max: number }>>({})
 
     useEffect(() => {
-        if (searchMode && !slug) {
-            loadSearchFilters();
-            return;
-        }
-        
         if (!slug) {
             setGroups([])
             return
@@ -52,42 +46,59 @@ export default function CategoryFilters({
         setLoading(true)
         const api = setupAPIClient()
 
-        // CORREÇÃO: URLs corrigidas para ambos os modos
-        const url = searchMode 
-            ? `/filters/forSearch` 
-            : `/categories/${encodeURIComponent(slug)}/filters`;
-
-        console.log(`Loading filters from: ${url}, searchMode: ${searchMode}`);
-
-        api.get(url)
+        api.get(`/categories/${encodeURIComponent(slug)}/filters`)
             .then(r => {
-                const data = r.data?.filters ?? [];
-                console.log('Filters data received:', data);
+                const data = r.data?.filters ?? []
 
                 const normGroups: any[] = []
                 const nextSliderState: Record<string, { min: number; max: number }> = {}
 
                 for (const g of data) {
                     const normalizedFilters = (g.filters ?? []).map((f: any) => {
-                        // Normalize options para o formato esperado
+                        // Normalize options to shape { id,label,value, colorCode?, iconUrl? }
                         let opts: Option[] = Array.isArray(f.options)
                             ? f.options.map((o: any) => {
-                                if (typeof o === 'string') {
-                                    return { id: o, label: o, value: o }
-                                }
-                                // Se já é um objeto com o formato correto
+                                if (typeof o === 'string') return { id: o, label: o, value: o }
+                                const label = o.label ?? o.value ?? String(o.id ?? '')
+                                const value = o.value ?? o.id ?? label
+                                const id = o.id ?? String(value)
+                                // iconUrl can come from o.iconUrl or backend-provided o.image?.url
+                                // keep raw string in iconUrl (we'll resolve prefix later)
+                                const iconUrl = o.iconUrl ?? (o.image && o.image.url ? o.image.url : undefined)
+                                const altText = o.altText ?? (o.image && o.image.altText ? o.image.altText : undefined)
+                                const colorCode = o.colorCode ?? undefined
                                 return {
-                                    id: o.id || String(o.value),
-                                    label: o.label || String(o.value),
-                                    value: o.value || o.id,
-                                    colorCode: o.colorCode,
-                                    iconUrl: o.iconUrl,
-                                    altText: o.altText
+                                    id: String(id),
+                                    label: String(label),
+                                    value: String(value),
+                                    colorCode,
+                                    iconUrl,
+                                    altText
                                 }
                             })
                             : []
 
-                        // prepare slider state
+                        // preserve reviewSummary (if backend sent it)
+                        const reviewSummary = f.reviewSummary ?? null
+
+                        // If there are no explicit options but reviewSummary exists (rating case),
+                        // create options from counts (5..1)
+                        if ((opts.length === 0 || !opts) && reviewSummary && reviewSummary.countsByRating) {
+                            const counts = reviewSummary.countsByRating
+                            const generated: Option[] = []
+                            // prefer descending 5..1
+                            for (let star = 5; star >= 1; star--) {
+                                const cnt = counts[String(star)] ?? 0
+                                generated.push({
+                                    id: String(star),
+                                    label: `${star} estrela${star > 1 ? 's' : ''} (${cnt})`,
+                                    value: String(star)
+                                })
+                            }
+                            opts = generated
+                        }
+
+                        // prepare slider state using existing selectedFilters or defaults
                         if (f.type === 'RANGE' && f.displayStyle === 'SLIDER' && (f.minValue !== null || f.maxValue !== null)) {
                             const curSel = selectedFilters[f.id] ?? []
                             const min = curSel[0] ? Number(curSel[0]) : (f.minValue ?? 0)
@@ -98,7 +109,7 @@ export default function CategoryFilters({
                         return {
                             ...f,
                             options: opts,
-                            reviewSummary: f.reviewSummary ?? null
+                            reviewSummary: reviewSummary
                         }
                     })
 
@@ -113,33 +124,16 @@ export default function CategoryFilters({
                 setPendingFilters(selectedFilters)
             })
             .catch(err => {
-                console.error('fetch filters error', err)
+                console.error('fetch filters', err)
                 setGroups([])
             })
             .finally(() => setLoading(false))
-    }, [slug, searchMode, selectedFilters])
+    }, [slug])
 
-    const loadSearchFilters = async () => {
-        setLoading(true);
-        try {
-            const api = setupAPIClient();
-            const response = await api.get('/filters/forSearch');
-            const data = response.data?.filters ?? [];
-            console.log('Search filters loaded:', data);
-            setGroups(data);
-            setPendingFilters(selectedFilters);
-        } catch (err) {
-            console.error('Error loading search filters:', err);
-            setGroups([]);
-        } finally {
-            setLoading(false);
-        }
-    };
-
+    // After groups loaded, enrich SKU options with variant images (one call to products)
     useEffect(() => {
         async function enrichSkus() {
             if (!slug) return
-
             // find SKU filters that have options but missing iconUrl for at least one option
             const skuFiltersInfo: { groupIndex: number, filterIndex: number, filterId: string, missingSkus: string[] }[] = []
 
@@ -160,17 +154,9 @@ export default function CategoryFilters({
 
             try {
                 const api = setupAPIClient()
-
-                // Escolhe a URL baseada no modo (busca ou categoria)
-                const url = searchMode
-                    ? '/products/busca'
-                    : `/categories/${encodeURIComponent(slug)}/products`;
-
-                const params = searchMode ? { q: slug, perPage: 2000 } : { perPage: 2000 };
-
-                // fetch products (busca ou categoria)
-                const resp = await api.get(url, { params })
-                const products = searchMode ? (resp.data?.data ?? []) : (resp.data?.products ?? [])
+                // fetch products of this category (big query - adjust perPage if necessary)
+                const resp = await api.get(`/categories/${encodeURIComponent(slug)}/products?perPage=2000`)
+                const products = resp.data?.products ?? []
 
                 // build map sku -> imageUrl (prefer primary image)
                 const skuImageMap = new Map<string, { url: string, altText?: string }>()
@@ -218,12 +204,15 @@ export default function CategoryFilters({
         }
 
         if (groups.length > 0) enrichSkus()
-    }, [groups, slug, searchMode]);
+        // only re-run when groups or slug changes
+    }, [groups, slug])
 
+    // Initialize pendingFilters when selectedFilters changes from parent
     useEffect(() => {
         setPendingFilters(selectedFilters)
     }, [selectedFilters])
 
+    // Helpers to update pendingFilters representation (Record<filterId, string[]>)
     function toggleMultiValue(filterId: string, value: string) {
         const cur = pendingFilters[filterId] ?? []
         const next = cur.includes(value) ? cur.filter(v => v !== value) : [...cur, value]
@@ -257,6 +246,8 @@ export default function CategoryFilters({
         setSliderState(prev => {
             const cur = prev[filterId] ?? { min: minLimit ?? 0, max: maxLimit ?? 100 }
             const next = { ...cur, [which]: which === 'min' ? Math.min(value, cur.max) : Math.max(value, cur.min) }
+
+            // Update pending filters
             setRange(filterId, next.min, next.max)
             return { ...prev, [filterId]: next }
         })
@@ -272,6 +263,8 @@ export default function CategoryFilters({
         setPendingFilters(emptyFilters)
         onChange(emptyFilters)
         setIsFilterChanged(false)
+
+        // Reset slider states
         setSliderState(prev => {
             const newState = { ...prev }
             Object.keys(newState).forEach(key => {
@@ -289,10 +282,14 @@ export default function CategoryFilters({
 
     if (loading) return <div className="p-4 bg-white rounded shadow text-black">Carregando filtros...</div>
 
+    // Helper render for review summary
     function renderReviewSummary(f: FilterItem | any) {
         if (!f?.reviewSummary) return null
         const avg = Math.round((f.reviewSummary.avgRating ?? 0) * 10) / 10
         const counts = f.reviewSummary.countsByRating ?? {}
+        // sort desc by rating
+        const keys = Object.keys(counts).sort((a, b) => Number(b) - Number(a))
+        // Ensure 5..1 shown even if counts missing
         const guaranteed = [5, 4, 3, 2, 1]
         return (
             <div className="mt-3 text-xs text-gray-600">
@@ -309,11 +306,15 @@ export default function CategoryFilters({
         )
     }
 
+    // small helper to resolve image src and render thumbnail or placeholder
     function resolveImageSrc(raw?: string) {
         if (!raw) return null
         const trimmed = String(raw)
+        // if already absolute url
         if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed
+        // if already looks like a path starting with '/' use as-is
         if (trimmed.startsWith('/')) return `${API_URL}${trimmed}`
+        // otherwise assume it's a stored filename/id and use /files/<id>
         return `${API_URL}/files/${trimmed}`
     }
 
@@ -322,6 +323,7 @@ export default function CategoryFilters({
 
         if (src) {
             return (
+                // next/image requires domains config for external images. If you have issues, fallback to <img>.
                 <Image
                     src={src}
                     alt={opt.altText ?? opt.label}
@@ -338,6 +340,7 @@ export default function CategoryFilters({
             return <span style={{ width: size, height: size, display: 'inline-block', borderRadius: '50%', background: opt.colorCode, border: '1px solid #ddd' }} aria-hidden />
         }
 
+        // fallback placeholder
         return (
             <div style={{ width: size, height: size, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, background: '#f3f3f3', border: '1px solid #e5e5e5' }}>
                 <span className="text-xs text-gray-500">{opt.label?.[0] ?? '?'}</span>
@@ -347,16 +350,14 @@ export default function CategoryFilters({
 
     return (
         <div className="bg-white rounded shadow text-black h-full flex flex-col">
+            {/* Header com título */}
             <div className="p-4 border-b">
                 <h3 className="font-semibold text-lg text-black">Filtros</h3>
             </div>
 
+            {/* Conteúdo dos filtros com scroll */}
             <div className="flex-grow overflow-y-auto p-4">
-                {groups.length === 0 && !loading && (
-                    <div className="text-center text-gray-500 py-4">
-                        {searchMode ? 'Nenhum filtro disponível para busca' : 'Nenhum filtro disponível'}
-                    </div>
-                )}
+                {groups.length === 0 && <div>Nenhum filtro disponível.</div>}
 
                 {groups.map(group => (
                     <div key={group.group?.id ?? 'ungrouped'} className="mb-4">
@@ -368,6 +369,7 @@ export default function CategoryFilters({
                             const dataType = f.dataType
                             const sel = pendingFilters[f.id] ?? []
 
+                            // render helpers that include thumbnails
                             const renderCheckboxes = (allowMultiple: boolean) => (
                                 <div className="mt-2 space-y-2">
                                     {Array.isArray(f.options) && f.options.map(opt => {
@@ -406,6 +408,8 @@ export default function CategoryFilters({
                                                 </option>
                                             ))}
                                         </select>
+
+                                        {/* preview da opção selecionada (mostra imagem quando disponível) */}
                                         {selected && (
                                             <div className="ml-2">
                                                 <Thumb opt={selected} />
@@ -436,6 +440,8 @@ export default function CategoryFilters({
                                             </option>
                                         ))}
                                     </select>
+
+                                    {/* show thumbnails of selected items below select */}
                                     <div className="mt-2 flex gap-2 flex-wrap">
                                         {Array.isArray(f.options) && sel.map(sv => {
                                             const opt = f.options!.find(o => String(o.value ?? o.id ?? o.label) === sv)
@@ -450,10 +456,12 @@ export default function CategoryFilters({
                                     </div>
                                 </div>
                             )
-
+                            // Build the inner body for the filter and then wrap with standard header + reviewSummary
                             let filterBody: React.ReactNode = null
 
+                            // RANGE handling
                             if (f.type === 'RANGE') {
+                                // SLIDER for numeric ranges
                                 if (display === 'SLIDER' && dataType === 'NUMBER' && (f.minValue !== undefined || f.maxValue !== undefined)) {
                                     const minLimit = f.minValue ?? 0
                                     const maxLimit = f.maxValue ?? (f.minValue ?? 100)
@@ -475,6 +483,7 @@ export default function CategoryFilters({
                                                         className="w-full h-2"
                                                     />
                                                 </div>
+
                                                 <div>
                                                     <input
                                                         type="range"
@@ -485,6 +494,7 @@ export default function CategoryFilters({
                                                         className="w-full h-2"
                                                     />
                                                 </div>
+
                                                 <div className="flex gap-2 items-center">
                                                     <input
                                                         type="number"
@@ -518,6 +528,7 @@ export default function CategoryFilters({
                                         </div>
                                     )
                                 } else {
+                                    // fallback numeric range inputs
                                     filterBody = (
                                         <div className="flex gap-2 items-center">
                                             <input
@@ -547,23 +558,30 @@ export default function CategoryFilters({
                                     )
                                 }
                             } else {
+                                // OPTIONS handling (SELECT / MULTI_SELECT)
                                 if (isMulti) {
+                                    // displayStyle mapping for multi
                                     if (display === 'DROPDOWN') {
                                         filterBody = renderDropdownMulti()
                                     } else {
+                                        // default to checkboxes
                                         filterBody = renderCheckboxes(true)
                                     }
                                 } else {
+                                    // single-select (SELECT)
                                     if (display === 'DROPDOWN') {
                                         filterBody = renderDropdownSingle()
                                     } else if (display === 'CHECKBOX') {
+                                        // If displayStyle is CHECKBOX but type is SELECT -> treat as single radios
                                         filterBody = renderDropdownSingle()
                                     } else {
+                                        // fallback
                                         filterBody = renderDropdownSingle()
                                     }
                                 }
                             }
 
+                            // Final wrapper for this filter: header + body + reviewSummary
                             return (
                                 <div key={f.id} className="mb-4 border-b pb-3 last:border-b-0">
                                     <div className="text-sm font-medium mb-2">{f.name}</div>
@@ -576,6 +594,7 @@ export default function CategoryFilters({
                 ))}
             </div>
 
+            {/* Botões de ação - fixos na parte inferior */}
             <div className="p-4 border-t bg-white sticky bottom-0">
                 <div className="flex gap-2 w-full">
                     <button

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { setupAPIClient } from "@/services/api";
 import CategoryFilters from "@/app/components/categoryFilters";
@@ -163,6 +163,8 @@ export default function CategoryPageClient() {
     }, [selectedFilters]);
 
     const pagesCount = Math.ceil(total / perPage);
+
+    console.log(products)
 
     return (
         <StoreLayout

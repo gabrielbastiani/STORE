@@ -29,9 +29,6 @@ export default function ProductPromotion({ promo, type }: ProductPromotionProps)
         variante: "PROMOÇÃO DA VARIANTE"
     };
 
-    // Cálculo do tempo restante (mesmo método anterior)
-    // ... 
-
     return (
         <div className={`mb-6 rounded-xl border ${colorClasses[type]} overflow-hidden shadow-sm`}>
             <div className="p-4 flex items-start">
